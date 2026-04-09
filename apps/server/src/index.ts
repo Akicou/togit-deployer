@@ -215,7 +215,7 @@ async function handleRequest(req: Request): Promise<Response> {
 
     // Tunnel management routes
     if (path === '/api/tunnels' && req.method === 'GET') {
-      return deploymentsApi.listActiveTunnels(req as any);
+      return deploymentsApi.listActiveTunnels(req as any, user);
     }
 
     if (path.match(/^\/api\/tunnels\/(\d+)\/stop$/) && req.method === 'POST') {
@@ -227,7 +227,7 @@ async function handleRequest(req: Request): Promise<Response> {
     }
 
     if (path === '/api/tunnels/test' && req.method === 'POST') {
-      return deploymentsApi.testLocaltonetConnection(req as any);
+      return deploymentsApi.testLocaltonetConnection(req as any, user);
     }
 
     if (path.match(/^\/api\/tunnels\/(\d+)\/status$/) && req.method === 'GET') {
