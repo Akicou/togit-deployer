@@ -97,8 +97,8 @@ export async function addRepo(req: Request, user: User): Promise<Response> {
     const result = await query<Repository>(
       `INSERT INTO repositories (owner, name, full_name, root_path, deploy_mode, watch_branch, added_by, service_name)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       ON CONFLICT (full_name) DO UPDATE
-       SET root_path = $4, deploy_mode = $5, watch_branch = $6, service_name = $8
+       ON CONFLICT (full_name, service_name) DO UPDATE
+       SET root_path = $4, deploy_mode = $5, watch_branch = $6
        RETURNING *`,
       [owner, name, full_name, root_path, deploy_mode, watch_branch, user.id, service_name]
     );
