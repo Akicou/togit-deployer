@@ -10,6 +10,7 @@ import type { TunnelType } from './localtonet.js';
 import { rollbackRepo } from './rollback.js';
 import { decryptAccessToken } from '../github/oauth.js';
 import type { Repository, Deployment, User } from '../types.js';
+import { parseDockerfileExpose } from './dockerfile-parser.js';
 
 const docker = new Docker();
 
@@ -372,13 +373,47 @@ export async function deploy(
       throw new Error(`No Dockerfile found in ${repo.root_path === '/' ? 'repository root' : repo.root_path}`);
     }
 
+    // Parse Dockerfile for port information
+    const portInfo = parseDockerfileExpose(dockerfilePath);
+
+    // Fetch current container port configuration
+    let containerPort = freshRepo.container_port || 3000;
+    const isDefaultPort = containerPort === 3000;
+
+    // Smart port resolution: auto-configure or warn on mismatch
+    if (portInfo.recommendedPort !== null) {
+      if (isDefaultPort && portInfo.recommendedPort !== 3000) {
+        // Auto-configure: user hasn't customized port, Dockerfile specifies different
+        await query('UPDATE repositories SET container_port = $1 WHERE id = $2',
+                    [portInfo.recommendedPort, freshRepo.id]);
+        await logDocker(
+          `Auto-detected port ${portInfo.recommendedPort} from Dockerfile EXPOSE directive`,
+          { deployment_id: deployment.id, repo_id: repo.id }
+        );
+        containerPort = portInfo.recommendedPort;
+      } else if (containerPort !== portInfo.recommendedPort) {
+        // Manual override: warn but respect user's choice
+        await logDocker(
+          `⚠️  Dockerfile exposes port ${portInfo.recommendedPort} but container_port is ${containerPort}. ` +
+          `Using configured port ${containerPort}. If deployment fails, update container_port via PATCH /api/repos/${repo.id}`,
+          { deployment_id: deployment.id, repo_id: repo.id }
+        );
+      }
+    }
+
+    if (portInfo.hasEnvVars) {
+      await logDocker(
+        `⚠️  Dockerfile uses environment variables in EXPOSE. Ensure PORT env var matches container_port=${containerPort}`,
+        { deployment_id: deployment.id, repo_id: repo.id }
+      );
+    }
+
     // Build Docker image
     await logBuild(`Building Docker image: ${imageName}`, { deployment_id: deployment.id, repo_id: repo.id });
     await buildImage(targetDir, imageName, deployment.id, repo.id);
 
     // Assign fixed host port for this repo (auto-assigns from 10000 if not set)
     const tunnelPort = await assignTunnelPort(freshRepo.id, freshRepo.tunnel_port ?? null);
-    const containerPort = freshRepo.container_port || 3000;
 
     // Inject PORT env var so apps using process.env.PORT auto-configure
     const envWithPort: Record<string, string> = { PORT: String(containerPort), ...mergedEnvVars };
@@ -394,7 +429,11 @@ export async function deploy(
     await logDocker(`Waiting for container to become healthy on port ${tunnelPort}...`, { deployment_id: deployment.id });
     const isHealthy = await waitForHealthy(tunnelPort);
     if (!isHealthy) {
-      throw new Error('Container failed to become healthy within timeout');
+      throw new Error(
+        `Container failed to become healthy on port ${tunnelPort}. ` +
+        `This may indicate the app is listening on a different port inside the container. ` +
+        `Current container_port: ${containerPort}. Check your Dockerfile's EXPOSE directive and app configuration.`
+      );
     }
     await logDocker(`Container started and healthy on host port ${tunnelPort}`, { deployment_id: deployment.id, repo_id: repo.id });
 
