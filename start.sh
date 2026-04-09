@@ -10,6 +10,9 @@ until docker exec togit-postgres pg_isready -U postgres > /dev/null 2>&1; do
 done
 echo "Postgres is ready."
 
+echo "Running database migrations..."
+bun run migrate
+
 echo "Building frontend..."
 bun run --cwd apps/web build
 
