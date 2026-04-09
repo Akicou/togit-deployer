@@ -12,13 +12,37 @@ export async function listAccessRequests(req: Request, currentUser: User): Promi
     return Response.json({ error: 'Only admins can list access requests' }, { status: 403 });
   }
 
-  const result = await query<AccessRequest & { github_login: string }>(
-    `SELECT ar.*, u.github_login
-     FROM access_requests ar
-     JOIN users u ON u.id = ar.user_id`
+  // Show all users who need approval: either have pending access_request OR access_level='pending'
+  const result = await query<AccessRequest & { github_login: string; access_level: string }>(
+    `SELECT DISTINCT ON (u.id)
+       COALESCE(ar.id, 0) as id,
+       u.id as user_id,
+       COALESCE(ar.status, u.access_level) as status,
+       COALESCE(ar.requested_at, u.created_at) as requested_at,
+       ar.processed_at,
+       ar.processed_by,
+       ar.note,
+       u.github_login,
+       u.access_level
+     FROM users u
+     LEFT JOIN access_requests ar ON u.id = ar.user_id AND ar.status = 'pending'
+     WHERE u.access_level = 'pending'
+     ORDER BY u.id, ar.requested_at DESC NULLS LAST`
   );
 
-  return Response.json({ access_requests: result.rows });
+  // Transform to expected format
+  const accessRequests = result.rows.map(row => ({
+    id: row.id,
+    user_id: row.user_id,
+    status: row.status,
+    requested_at: row.requested_at,
+    processed_at: row.processed_at,
+    processed_by: row.processed_by,
+    note: row.note,
+    github_login: row.github_login,
+  }));
+
+  return Response.json({ access_requests: accessRequests });
 }
 
 export async function createAccessRequest(req: Request, currentUser: User): Promise<Response> {
@@ -86,18 +110,20 @@ export async function updateAccessRequest(
   const { status, note } = parsed.data;
 
   try {
-    // First update the access request
+    // Check if user exists
+    const userCheck = await query('SELECT 1 FROM users WHERE id = $1', [userId]);
+    if (userCheck.rows.length === 0) {
+      return Response.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // Try to update the access request if it exists
     const requestResult = await query<AccessRequest>(
       `UPDATE access_requests 
        SET status = $2, processed_by = $3, processed_at = NOW(), note = $4
-       WHERE user_id = $1
+       WHERE user_id = $1 AND status = 'pending'
        RETURNING *`,
       [userId, status, adminUser.id, note || null]
     );
-
-    if (requestResult.rows.length === 0) {
-      return Response.json({ error: 'Access request not found' }, { status: 404 });
-    }
 
     // Update the user's access level
     await query('UPDATE users SET access_level = $1 WHERE id = $2', [status, userId]);
@@ -108,7 +134,10 @@ export async function updateAccessRequest(
       await revokeUserSessions(userId);
     }
 
-    return Response.json({ access_request: requestResult.rows[0] });
+    return Response.json({ 
+      access_request: requestResult.rows.length > 0 ? requestResult.rows[0] : { user_id: userId, status },
+      message: requestResult.rows.length > 0 ? 'Access request processed' : 'User access level updated' 
+    });
   } catch (error) {
     console.error('Error processing access request:', error);
     return Response.json({ error: 'Failed to process access request' }, { status: 500 });
