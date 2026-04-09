@@ -136,8 +136,8 @@ async function cleanupOrphanedContainers(): Promise<void> {
 
     for (const containerInfo of containers) {
       const name = containerInfo.Names?.[0] || '';
-      // name is like "/togit-123"
-      const match = name.match(/^\/togit-(\d+)$/);
+      // name is like "/togit-123" or "/togit-123-backend"
+      const match = name.match(/^\/togit-(\d+)(?:-[^/]+)?$/);
       if (!match) continue;
 
       const repoId = parseInt(match[1], 10);
@@ -297,8 +297,9 @@ export async function deploy(
 
   const deployment = insertResult.rows[0];
   const sanitizedRef = sanitizeRef(ref);
-  const imageName = `togit-${repo.id}-${sanitizedRef}`;
-  const containerName = `togit-${repo.id}`;
+  const serviceName = (repo.service_name || 'app').toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+  const imageName = `togit-${repo.id}-${serviceName}-${sanitizedRef}`;
+  const containerName = `togit-${repo.id}-${serviceName}`;
 
   try {
     await query('UPDATE deployments SET status = $1 WHERE id = $2', ['building', deployment.id]);

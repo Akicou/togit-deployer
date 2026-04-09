@@ -51,6 +51,7 @@ const coreMigrations: string[] = [
     enabled BOOLEAN DEFAULT TRUE,
     added_by INTEGER REFERENCES users(id),
     deployment_env_vars JSONB DEFAULT '{}',
+    service_name TEXT NOT NULL DEFAULT 'app',
     created_at TIMESTAMPTZ DEFAULT NOW()
   )`,
 

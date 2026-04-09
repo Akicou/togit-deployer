@@ -11,6 +11,7 @@ const addRepoSchema = z.object({
   root_path: z.string().default('/'),
   deploy_mode: z.enum(['release', 'commit']).default('release'),
   watch_branch: z.string().default('main'),
+  service_name: z.string().min(1).max(63).regex(/^[a-z0-9][a-z0-9_-]*$/, 'Service name must be lowercase alphanumeric, dashes, or underscores').default('app'),
 });
 
 const updateRepoSchema = z.object({
@@ -19,6 +20,7 @@ const updateRepoSchema = z.object({
   watch_branch: z.string().optional(),
   enabled: z.boolean().optional(),
   deployment_env_vars: z.record(z.string(), z.string()).optional(),
+  service_name: z.string().min(1).max(63).regex(/^[a-z0-9][a-z0-9_-]*$/, 'Service name must be lowercase alphanumeric, dashes, or underscores').optional(),
 });
 
 export async function listRepos(req: Request, user: User): Promise<Response> {
@@ -84,17 +86,17 @@ export async function addRepo(req: Request, user: User): Promise<Response> {
     return Response.json({ error: parsed.error.message }, { status: 400 });
   }
 
-  const { owner, name, root_path, deploy_mode, watch_branch } = parsed.data;
+  const { owner, name, root_path, deploy_mode, watch_branch, service_name } = parsed.data;
   const full_name = `${owner}/${name}`;
 
   try {
     const result = await query<Repository>(
-      `INSERT INTO repositories (owner, name, full_name, root_path, deploy_mode, watch_branch, added_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO repositories (owner, name, full_name, root_path, deploy_mode, watch_branch, added_by, service_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (full_name) DO UPDATE
-       SET root_path = $4, deploy_mode = $5, watch_branch = $6
+       SET root_path = $4, deploy_mode = $5, watch_branch = $6, service_name = $8
        RETURNING *`,
-      [owner, name, full_name, root_path, deploy_mode, watch_branch, user.id]
+      [owner, name, full_name, root_path, deploy_mode, watch_branch, user.id, service_name]
     );
 
     return Response.json({ repo: result.rows[0] }, { status: 201 });
@@ -145,6 +147,10 @@ export async function updateRepo(req: Request, user: User, repoId: number): Prom
     // Pass plain object — node-postgres serializes JSONB automatically
     updates.push(`deployment_env_vars = $${paramIndex++}::jsonb`);
     values.push(JSON.stringify(parsed.data.deployment_env_vars));
+  }
+  if (parsed.data.service_name !== undefined) {
+    updates.push(`service_name = $${paramIndex++}`);
+    values.push(parsed.data.service_name);
   }
 
   if (updates.length === 0) {

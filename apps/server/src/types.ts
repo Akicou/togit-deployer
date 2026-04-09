@@ -23,6 +23,8 @@ export interface Repository {
   added_by: number | null;
   // JSONB column — node-postgres automatically parses JSONB to objects
   deployment_env_vars: Record<string, string> | string;
+  /** Logical service name for monorepo support. Defaults to 'app'. */
+  service_name: string;
   created_at: Date;
 }
 
