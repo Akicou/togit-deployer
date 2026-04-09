@@ -3,7 +3,7 @@ import { spawn } from 'child_process';
 import * as net from 'net';
 import path from 'path';
 import fs from 'fs';
-import { query } from '../db/client.js';
+import { query, pool } from '../db/client.js';
 import { logBuild, logDocker, logSystem, logError } from '../logger/index.js';
 import { createTunnel, startTunnel, updateTunnelPort, stopTunnel } from './localtonet.js';
 import type { TunnelType } from './localtonet.js';
@@ -357,6 +357,30 @@ function spawnCommand(
     proc.on('error', (err) => reject(err));
   });
 }
+/**
+ * Check if a port is available on localhost by attempting to bind to it.
+ * Returns true if port is free, false if already in use.
+ */
+async function isPortAvailable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+
+    server.once('error', (err: any) => {
+      if (err.code === 'EADDRINUSE') {
+        resolve(false); // Port in use
+      } else {
+        resolve(false); // Other error, assume not available
+      }
+    });
+
+    server.once('listening', () => {
+      server.close();
+      resolve(true); // Port is available
+    });
+
+    server.listen(port, '127.0.0.1');
+  });
+}
 
 /**
  * Assign a fixed host port to the repo for Docker port mapping.
@@ -364,11 +388,52 @@ function spawnCommand(
  */
 async function assignTunnelPort(repoId: number, existing: number | null): Promise<number> {
   if (existing !== null) return existing;
-  const { rows } = await query<{ max: number }>(`SELECT COALESCE(MAX(tunnel_port), 9999) AS max FROM repositories`);
-  const port = rows[0].max + 1;
-  await query(`UPDATE repositories SET tunnel_port = $1 WHERE id = $2 AND tunnel_port IS NULL`, [port, repoId]);
-  const { rows: fresh } = await query<{ tunnel_port: number }>(`SELECT tunnel_port FROM repositories WHERE id = $1`, [repoId]);
-  return fresh[0].tunnel_port;
+
+  // Use transaction with pessimistic locking to prevent race conditions
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // Lock the repositories table to prevent concurrent reads of MAX
+    // This ensures atomic read-increment-write
+    const maxResult = await client.query<{ max: number }>(
+      `SELECT COALESCE(MAX(tunnel_port), 9999) AS max
+       FROM repositories
+       FOR UPDATE`
+    );
+
+    const nextPort = maxResult.rows[0].max + 1;
+
+    // Validate port is in acceptable range (10000-65535)
+    if (nextPort > 65535) {
+      throw new Error('Port range exhausted (max: 65535)');
+    }
+
+    // Update this specific repo with the new port
+    await client.query(
+      `UPDATE repositories
+       SET tunnel_port = $1
+       WHERE id = $2 AND tunnel_port IS NULL`,
+      [nextPort, repoId]
+    );
+
+    await client.query('COMMIT');
+
+    // Verify assignment succeeded
+    const verify = await query<{ tunnel_port: number }>(
+      `SELECT tunnel_port FROM repositories WHERE id = $1`,
+      [repoId]
+    );
+
+    return verify.rows[0].tunnel_port;
+
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export async function checkDockerRunning(): Promise<boolean> {
@@ -524,6 +589,16 @@ export async function deploy(
     // Assign fixed host port for this repo (auto-assigns from 10000 if not set)
     const tunnelPort = await assignTunnelPort(freshRepo.id, freshRepo.tunnel_port ?? null);
 
+    // Verify port is actually available on the system
+    const portAvailable = await isPortAvailable(tunnelPort);
+    if (!portAvailable) {
+      throw new Error(
+        `Host port ${tunnelPort} is already in use by another process. ` +
+        `This port is assigned to ${repo.full_name}. ` +
+        `To resolve: stop the process using this port, or manually update tunnel_port in database.`
+      );
+    }
+
     // Inject PORT env var so apps using process.env.PORT auto-configure
     const envWithPort: Record<string, string> = { PORT: String(containerPort), ...mergedEnvVars };
 
@@ -531,7 +606,7 @@ export async function deploy(
     await stopExistingContainer(containerName);
 
     // Run container with fixed port mapping
-    await logDocker(`Starting container: ${containerName} (-p ${tunnelPort}:${containerPort})`, { deployment_id: deployment.id, repo_id: repo.id });
+    await logDocker(`Starting container: ${containerName} (-p 127.0.0.1:${tunnelPort}:${containerPort})`, { deployment_id: deployment.id, repo_id: repo.id });
     const container = await runContainer(imageName, containerName, envWithPort, tunnelPort, containerPort);
 
     // Wait for the container to become healthy on the fixed host port
@@ -691,7 +766,7 @@ async function runContainer(
     'run', '-d',
     '--name', containerName,
     ...envArgs,
-    '-p', `${tunnelPort}:${containerPort}`,
+    '-p', `127.0.0.1:${tunnelPort}:${containerPort}`,
     '--restart', 'unless-stopped',
     imageName,
   ];
