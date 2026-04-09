@@ -16,6 +16,9 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    allowedHosts: ['deployer.nomotion.one'],
+  },
   build: {
     outDir: 'dist',
     sourcemap: true,
