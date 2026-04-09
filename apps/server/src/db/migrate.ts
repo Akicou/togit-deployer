@@ -96,6 +96,9 @@ const migrations = [
   
   `ALTER TABLE deployments ADD COLUMN IF NOT EXISTS env_vars JSONB DEFAULT '{}'`,
   
+  // Add access_level column to users table if it doesn't exist
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS access_level TEXT NOT NULL DEFAULT 'pending'`,
+  
   `CREATE TABLE IF NOT EXISTS access_requests (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
