@@ -12,7 +12,7 @@ import { parseCookies } from './utils/cookie.js';
 import { handleWSOpen, handleWSClose } from './logger/index.js';
 import type { WSData } from './logger/index.js';
 import { getSession } from './github/oauth.js';
-import { logSystem, logError } from './logger/index.js';
+import { logSystem, logError, logNetwork } from './logger/index.js';
 import * as authApi from './api/auth.js';
 import * as reposApi from './api/repos.js';
 import * as deploymentsApi from './api/deployments.js';
@@ -87,8 +87,9 @@ function matchRoute(pattern: string, path: string): Record<string, string> | nul
 async function handleRequest(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const path = url.pathname;
+  const start = Date.now();
 
-  // CORS headers
+  // CORS headers + request logging for all API calls
   const addCors = (response: Response): Response => {
     const origin = process.env.ALLOWED_ORIGIN || '*';
     const headers = new Headers(response.headers);
@@ -96,6 +97,11 @@ async function handleRequest(req: Request): Promise<Response> {
     headers.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
     headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     headers.set('Access-Control-Allow-Credentials', 'true');
+    // Log all API requests (skip noisy polling routes)
+    if (path.startsWith('/api/') && req.method !== 'OPTIONS' && path !== '/api/auth/me') {
+      const ms = Date.now() - start;
+      logNetwork(`${req.method} ${path} ${response.status} (${ms}ms)`).catch(() => {});
+    }
     return new Response(response.body, { status: response.status, headers });
   };
 
@@ -165,6 +171,14 @@ async function handleRequest(req: Request): Promise<Response> {
       const repoId = parseInt(params.id, 10);
       if (isNaN(repoId)) return addCors(Response.json({ error: 'Invalid repo ID' }, { status: 400 }));
       return addCors(await reposApi.getRepoDeployments(req, repoId));
+    }
+
+    // POST /api/repos/:id/reset-tunnel
+    params = matchRoute('/api/repos/:id/reset-tunnel', path);
+    if (params && req.method === 'POST') {
+      const repoId = parseInt(params.id, 10);
+      if (isNaN(repoId)) return addCors(Response.json({ error: 'Invalid repo ID' }, { status: 400 }));
+      return addCors(await reposApi.resetTunnel(req, user, repoId));
     }
 
     // POST /api/repos/:id/deploy
@@ -339,10 +353,10 @@ async function handleRequest(req: Request): Promise<Response> {
     return addCors(Response.json({ error: 'Not found' }, { status: 404 }));
   } catch (error) {
     logError(`Request error: ${error instanceof Error ? error.message : String(error)}`);
-    return Response.json(
+    return addCors(Response.json(
       { error: 'Internal server error', message: error instanceof Error ? error.message : String(error) },
       { status: 500 }
-    );
+    ));
   }
 }
 

@@ -225,6 +225,33 @@ export async function deleteRepo(req: Request, user: User, repoId: number): Prom
   }
 }
 
+export async function resetTunnel(req: Request, user: User, repoId: number): Promise<Response> {
+  if (user.role === 'viewer') {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const repoResult = await query<Repository>('SELECT * FROM repositories WHERE id = $1', [repoId]);
+  if (repoResult.rows.length === 0) {
+    return Response.json({ error: 'Repository not found' }, { status: 404 });
+  }
+  const repo = repoResult.rows[0];
+
+  // Delete the old tunnel from Localtonet if one exists
+  const apiKey = process.env.LOCALTONET_AUTH_TOKEN || '';
+  if (repo.localtonet_tunnel_id && apiKey) {
+    const { deleteTunnel } = await import('../daemon/localtonet.js');
+    await deleteTunnel(repo.localtonet_tunnel_id, apiKey).catch(() => {});
+  }
+
+  // Clear all tunnel fields — next deploy will create a fresh tunnel
+  await query(
+    `UPDATE repositories SET localtonet_tunnel_id = NULL, tunnel_url = NULL, tunnel_port = NULL WHERE id = $1`,
+    [repoId]
+  );
+
+  return Response.json({ success: true, message: 'Tunnel reset. Next deploy will create a new tunnel.' });
+}
+
 export async function getRepoDeployments(req: Request, repoId: number): Promise<Response> {
   const result = await query(
     `SELECT d.*, u.github_login as triggered_by_login

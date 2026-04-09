@@ -269,6 +269,7 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
   const [saving, setSaving] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [resettingTunnel, setResettingTunnel] = useState(false);
 
   async function handleDeployConfirm() {
     if (!showDeployModal) return;
@@ -311,6 +312,25 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
       toast('Failed to save — network error', 'error');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleResetTunnel() {
+    if (!window.confirm(`Reset tunnel for ${repo.full_name}? The current tunnel URL will be deleted and a new one created on the next deploy.`)) return;
+    setResettingTunnel(true);
+    try {
+      const response = await api.post(`/api/repos/${repo.id}/reset-tunnel`);
+      if (response.ok) {
+        toast('Tunnel reset — deploy again to get a new URL', 'success');
+        onRefresh();
+      } else {
+        const data = await response.json().catch(() => ({}));
+        toast(data.error || 'Failed to reset tunnel', 'error');
+      }
+    } catch {
+      toast('Failed to reset tunnel — network error', 'error');
+    } finally {
+      setResettingTunnel(false);
     }
   }
 
@@ -370,6 +390,7 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
             </h1>
             <div style={{ display: 'flex', gap: 8 }}>
               <DeployBadge status={repo.last_deployment_status || 'never'} />
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               {(repo.tunnel_url || repo.last_tunnel_url) && (
                 <a
                   href={(repo.tunnel_url || repo.last_tunnel_url)!}
@@ -399,6 +420,33 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
                   {repo.tunnel_url || repo.last_tunnel_url}
                 </a>
               )}
+              {repo.tunnel_port && (
+                <span style={{ fontSize: 11, color: '#666', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>
+                  :{repo.tunnel_port}→:{repo.container_port ?? 3000}
+                </span>
+              )}
+              {(user.role === 'admin' || user.role === 'deployer') && (
+                <button
+                  onClick={handleResetTunnel}
+                  disabled={resettingTunnel}
+                  title="Delete current tunnel and create a fresh one on next deploy"
+                  style={{
+                    padding: '4px 10px',
+                    border: '2px solid #1a1a1a',
+                    background: '#ffffff',
+                    color: '#1a1a1a',
+                    fontWeight: 700,
+                    cursor: resettingTunnel ? 'not-allowed' : 'pointer',
+                    fontSize: 11,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    opacity: resettingTunnel ? 0.5 : 1,
+                  }}
+                >
+                  {resettingTunnel ? '...' : 'Reset Tunnel'}
+                </button>
+              )}
+            </div>
             </div>
           </div>
 
