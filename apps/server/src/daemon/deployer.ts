@@ -220,6 +220,33 @@ function sanitizeRef(ref: string): string {
   return ref.replace(/[^a-zA-Z0-9_.-]/g, '-').substring(0, 128);
 }
 
+function spawnCommand(
+  cmd: string,
+  args: string[],
+  opts: { cwd?: string; onOutput?: (line: string) => void } = {}
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(cmd, args, { cwd: opts.cwd });
+    let stdout = '';
+    const emit = (data: Buffer) => {
+      const text = data.toString();
+      stdout += text;
+      if (opts.onOutput) {
+        for (const line of text.split('\n')) {
+          if (line.trim()) opts.onOutput(line.trim());
+        }
+      }
+    };
+    proc.stdout?.on('data', emit);
+    proc.stderr?.on('data', emit);
+    proc.on('close', (code) => {
+      if (code === 0) resolve(stdout.trim());
+      else reject(new Error(`${cmd} ${args[0]} exited with code ${code}`));
+    });
+    proc.on('error', (err) => reject(err));
+  });
+}
+
 export async function checkDockerRunning(): Promise<boolean> {
   try {
     await docker.ping();
@@ -447,109 +474,23 @@ async function buildImage(
   deploymentId: number,
   repoId: number
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const buildOpts: Record<string, unknown> = {
-      t: imageName,
-      rm: true,
-      dockerfile: 'Dockerfile',
-      // Avoid cross-platform emulation slowdown — build for native arch
-      // pull: true ensures latest base image layers
-      // nocache: true for fresh builds (set false to enable cache)
-    };
+  const startTime = Date.now();
+  await logBuild(`Starting Docker build for ${imageName}...`, { deployment_id: deploymentId, repo_id: repoId });
 
-    const startTime = Date.now();
-    logBuild(`Starting Docker build for ${imageName}...`, { deployment_id: deploymentId, repo_id: repoId });
-
-    docker.buildImage(
-      context,
-      buildOpts,
-      async (err, stream) => {
-        if (err) {
-          const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-          logError(`Docker build failed to start after ${duration}s: ${err.message}`, { deployment_id: deploymentId, repo_id: repoId });
-          reject(err);
-          return;
-        }
-        if (!stream) {
-          logError('Docker build returned no stream', { deployment_id: deploymentId, repo_id: repoId });
-          reject(new Error('No stream from Docker build'));
-          return;
-        }
-
-        // Read stream directly for real-time output (much faster than followProgress)
-        const logPromises: Promise<void>[] = [];
-        const chunks: Buffer[] = [];
-        let error: string | null = null;
-
-        stream.on('data', (chunk: Buffer) => {
-          chunks.push(chunk);
-        });
-
-        stream.on('end', async () => {
-          const rawData = Buffer.concat(chunks).toString('utf-8');
-          // Docker daemon returns newline-delimited JSON objects
-          // e.g. {"stream":"Step 1/10 : FROM node:18\n"}
-          for (const line of rawData.split('\n')) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-            try {
-              const parsed = JSON.parse(trimmed);
-              if (parsed.error) {
-                error = parsed.error;
-                logPromises.push(logError(`Docker error: ${parsed.error}`, { deployment_id: deploymentId, repo_id: repoId }));
-              } else if (parsed.stream) {
-                const streamLines = parsed.stream.trim().split('\n');
-                for (const sl of streamLines) {
-                  if (sl) {
-                    logPromises.push(logBuild(sl, { deployment_id: deploymentId, repo_id: repoId }));
-                  }
-                }
-              } else if (parsed.status) {
-                // e.g. {"status":"Pulling from library/node","id":"latest"}
-                logPromises.push(logBuild(`${parsed.status}${parsed.id ? ` [${parsed.id}]` : ''}`, { deployment_id: deploymentId, repo_id: repoId }));
-              } else if (parsed.progress || parsed.progressDetail) {
-                // Pull progress — only log once per layer to avoid spam
-              }
-            } catch {
-              // If it's not JSON, just log the raw line
-              if (trimmed) {
-                logPromises.push(logBuild(trimmed, { deployment_id: deploymentId, repo_id: repoId }));
-              }
-            }
-          }
-
-          // Wait for all log writes to complete before resolving/rejecting
-          await Promise.allSettled(logPromises);
-
-          const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-          if (error) {
-            logError(`Docker build failed after ${duration}s: ${error}`, { deployment_id: deploymentId, repo_id: repoId });
-            reject(new Error(error));
-            return;
-          }
-          logBuild(`✅ Docker build completed in ${duration}s: ${imageName}`, { deployment_id: deploymentId, repo_id: repoId });
-          resolve();
-        });
-
-        stream.on('error', (err: Error) => {
-          const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-          logError(`Docker build stream error after ${duration}s: ${err.message}`, { deployment_id: deploymentId, repo_id: repoId });
-          reject(err);
-        });
-      }
-    );
+  await spawnCommand('docker', ['build', '-t', imageName, '.'], {
+    cwd: context,
+    onOutput: (line) => logBuild(line, { deployment_id: deploymentId, repo_id: repoId }),
   });
+
+  const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+  await logBuild(`✅ Docker build completed in ${duration}s: ${imageName}`, { deployment_id: deploymentId, repo_id: repoId });
 }
 
 async function stopExistingContainer(containerName: string): Promise<void> {
-  try {
-    const existingContainer = docker.getContainer(containerName);
-    await existingContainer.stop();
-    await existingContainer.remove();
-    logDocker(`Stopped and removed existing container: ${containerName}`);
-  } catch (err: unknown) {
-    if (err instanceof Error && !err.message.includes('No such container')) throw err;
-  }
+  const noop = () => {};
+  await spawnCommand('docker', ['stop', containerName]).catch(noop);
+  await spawnCommand('docker', ['rm', containerName]).catch(noop);
+  logDocker(`Stopped and removed existing container: ${containerName}`);
 }
 
 async function runContainer(
@@ -557,35 +498,18 @@ async function runContainer(
   containerName: string,
   envVars: Record<string, string>
 ): Promise<{ id: string }> {
-  const envArray = Object.entries(envVars).map(([k, v]) => `${k}=${v}`);
+  const envArgs = Object.entries(envVars).flatMap(([k, v]) => ['-e', `${k}=${v}`]);
+  const args = [
+    'run', '-d',
+    '--name', containerName,
+    ...envArgs,
+    '-P',
+    '--restart', 'unless-stopped',
+    imageName,
+  ];
 
-  const container = await docker.createContainer({
-    Image: imageName,
-    name: containerName,
-    Env: envArray,
-    // Expose all common web ports — PublishAllPorts handles the bindings dynamically
-    ExposedPorts: {
-      '3000/tcp': {},
-      '80/tcp': {},
-      '5000/tcp': {},
-      '8000/tcp': {},
-      '8080/tcp': {},
-    },
-    HostConfig: {
-      PortBindings: {
-        '3000/tcp': [{ HostPort: '' }],
-        '80/tcp': [{ HostPort: '' }],
-        '5000/tcp': [{ HostPort: '' }],
-        '8000/tcp': [{ HostPort: '' }],
-        '8080/tcp': [{ HostPort: '' }],
-      },
-      RestartPolicy: { Name: 'unless-stopped' },
-      PublishAllPorts: true,
-    },
-  });
-
-  await container.start();
-  return { id: container.id };
+  const id = await spawnCommand('docker', args);
+  return { id };
 }
 
 function getExposedPort(containerInfo: any): number | null {
@@ -609,14 +533,10 @@ function getExposedPort(containerInfo: any): number | null {
 }
 
 export async function stopContainer(containerId: string): Promise<void> {
-  try {
-    const container = docker.getContainer(containerId);
-    await container.stop();
-    await container.remove();
-    logDocker(`Stopped container: ${containerId}`);
-  } catch (err: unknown) {
-    if (err instanceof Error && !err.message.includes('No such container')) throw err;
-  }
+  const noop = () => {};
+  await spawnCommand('docker', ['stop', containerId]).catch(noop);
+  await spawnCommand('docker', ['rm', containerId]).catch(noop);
+  logDocker(`Stopped container: ${containerId}`);
 }
 
 export async function stopAllTogitContainers(): Promise<void> {
