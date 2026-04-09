@@ -447,70 +447,94 @@ async function buildImage(
   repoId: number
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    const buildOpts: Record<string, unknown> = {
+      t: imageName,
+      rm: true,
+      dockerfile: 'Dockerfile',
+      // Avoid cross-platform emulation slowdown — build for native arch
+      // pull: true ensures latest base image layers
+      // nocache: true for fresh builds (set false to enable cache)
+    };
+
+    const startTime = Date.now();
+    logBuild(`Starting Docker build for ${imageName}...`, { deployment_id: deploymentId, repo_id: repoId });
+
     docker.buildImage(
       context,
-      { 
-        t: imageName,
-        rm: true,
-        dockerfile: 'Dockerfile',
-        pull: false,
-        nocache: false,
-        platform: 'linux/amd64',
-        shmsize: 536870912,
-      } as Record<string, unknown>,
-      (err, stream) => {
-        if (err) { 
-          logError(`Docker build stream error: ${err.message}`, { deployment_id: deploymentId, repo_id: repoId });
-          reject(err); 
-          return; 
+      buildOpts,
+      async (err, stream) => {
+        if (err) {
+          const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+          logError(`Docker build failed to start after ${duration}s: ${err.message}`, { deployment_id: deploymentId, repo_id: repoId });
+          reject(err);
+          return;
         }
-        if (!stream) { 
-          logError('No stream from Docker build', { deployment_id: deploymentId, repo_id: repoId });
-          reject(new Error('No stream from Docker build')); 
-          return; 
+        if (!stream) {
+          logError('Docker build returned no stream', { deployment_id: deploymentId, repo_id: repoId });
+          reject(new Error('No stream from Docker build'));
+          return;
         }
 
-        let buildSuccess = false;
-        let buildError: Error | null = null;
-        let startTime = Date.now();
+        // Read stream directly for real-time output (much faster than followProgress)
+        const logPromises: Promise<void>[] = [];
+        const chunks: Buffer[] = [];
+        let error: string | null = null;
 
-        logBuild(`Starting optimized Docker build for ${imageName}...`, { deployment_id: deploymentId, repo_id: repoId });
+        stream.on('data', (chunk: Buffer) => {
+          chunks.push(chunk);
+        });
 
-        docker.modem.followProgress(
-          stream,
-          (err) => {
-            const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-            if (err) {
-              const errorMsg = `Docker build failed after ${duration}s: ${err.message}`;
-              logError(errorMsg, { deployment_id: deploymentId, repo_id: repoId });
-              reject(err);
-            } else if (buildSuccess) {
-              logBuild(`✅ Docker build completed in ${duration}s: ${imageName}`, { deployment_id: deploymentId, repo_id: repoId });
-              resolve();
-            } else if (buildError) {
-              reject(buildError);
-            } else {
-              logBuild(`Docker build completed in ${duration}s`, { deployment_id: deploymentId, repo_id: repoId });
-              resolve();
-            }
-          },
-          (event) => {
-            if (event.stream) {
-              const lines = event.stream.trim().split('\n');
-              for (const line of lines) {
-                if (line && !line.includes('Using cache')) logBuild(line, { deployment_id: deploymentId, repo_id: repoId });
-                else if (line.includes('Using cache')) logBuild('⚡ ' + line, { deployment_id: deploymentId, repo_id: repoId });
+        stream.on('end', async () => {
+          const rawData = Buffer.concat(chunks).toString('utf-8');
+          // Docker daemon returns newline-delimited JSON objects
+          // e.g. {"stream":"Step 1/10 : FROM node:18\n"}
+          for (const line of rawData.split('\n')) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            try {
+              const parsed = JSON.parse(trimmed);
+              if (parsed.error) {
+                error = parsed.error;
+                logPromises.push(logError(`Docker error: ${parsed.error}`, { deployment_id: deploymentId, repo_id: repoId }));
+              } else if (parsed.stream) {
+                const streamLines = parsed.stream.trim().split('\n');
+                for (const sl of streamLines) {
+                  if (sl) {
+                    logPromises.push(logBuild(sl, { deployment_id: deploymentId, repo_id: repoId }));
+                  }
+                }
+              } else if (parsed.status) {
+                // e.g. {"status":"Pulling from library/node","id":"latest"}
+                logPromises.push(logBuild(`${parsed.status}${parsed.id ? ` [${parsed.id}]` : ''}`, { deployment_id: deploymentId, repo_id: repoId }));
+              } else if (parsed.progress || parsed.progressDetail) {
+                // Pull progress — only log once per layer to avoid spam
+              }
+            } catch {
+              // If it's not JSON, just log the raw line
+              if (trimmed) {
+                logPromises.push(logBuild(trimmed, { deployment_id: deploymentId, repo_id: repoId }));
               }
             }
-            if (event.error) {
-              buildError = new Error(event.error);
-              logError(`Docker build error: ${event.error}`, { deployment_id: deploymentId, repo_id: repoId });
-            }
-            if (event.status === 'Build complete' || (event.aux && event.aux.ID)) {
-              buildSuccess = true;
-            }
           }
-        );
+
+          // Wait for all log writes to complete before resolving/rejecting
+          await Promise.allSettled(logPromises);
+
+          const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+          if (error) {
+            logError(`Docker build failed after ${duration}s: ${error}`, { deployment_id: deploymentId, repo_id: repoId });
+            reject(new Error(error));
+            return;
+          }
+          logBuild(`✅ Docker build completed in ${duration}s: ${imageName}`, { deployment_id: deploymentId, repo_id: repoId });
+          resolve();
+        });
+
+        stream.on('error', (err: Error) => {
+          const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+          logError(`Docker build stream error after ${duration}s: ${err.message}`, { deployment_id: deploymentId, repo_id: repoId });
+          reject(err);
+        });
       }
     );
   });
