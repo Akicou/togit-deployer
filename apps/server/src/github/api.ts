@@ -33,12 +33,20 @@ interface GitHubRepo {
   };
 }
 
-export async function getLatestRelease(
-  owner: string,
-  repo: string,
-  accessToken?: string,
-  branch?: string
-): Promise<GitHubRelease | null> {
+/**
+ * Check if a GitHub API response contains rate limit headers
+ * and log a warning if we're close to running out.
+ */
+function checkRateLimitHeaders(headers: Headers): void {
+  const remaining = headers.get('X-RateLimit-Remaining');
+  if (remaining !== null && parseInt(remaining, 10) < 50) {
+    console.warn(
+      `⚠️  GitHub API rate limit running low: ${remaining} requests remaining`
+    );
+  }
+}
+
+async function githubFetch(url: string, accessToken?: string): Promise<Response> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github.v3+json',
     'User-Agent': 'togit-deployer',
@@ -48,10 +56,22 @@ export async function getLatestRelease(
     headers.Authorization = `Bearer ${accessToken}`;
   }
 
+  const response = await fetch(url, { headers });
+  checkRateLimitHeaders(response.headers);
+  return response;
+}
+
+export async function getLatestRelease(
+  owner: string,
+  repo: string,
+  accessToken?: string,
+  branch?: string
+): Promise<GitHubRelease | null> {
   try {
-    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases?per_page=20`, {
-      headers,
-    });
+    const response = await githubFetch(
+      `https://api.github.com/repos/${owner}/${repo}/releases?per_page=20`,
+      accessToken
+    );
 
     if (response.status === 404) {
       return null;
@@ -81,21 +101,13 @@ export async function getLatestCommit(
   accessToken?: string,
   branch?: string
 ): Promise<GitHubCommit | null> {
-  const headers: Record<string, string> = {
-    Accept: 'application/vnd.github.v3+json',
-    'User-Agent': 'togit-deployer',
-  };
-
-  if (accessToken) {
-    headers.Authorization = `Bearer ${accessToken}`;
-  }
-
   const branchParam = branch ? `&sha=${encodeURIComponent(branch)}` : '';
 
   try {
-    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits?per_page=1${branchParam}`, {
-      headers,
-    });
+    const response = await githubFetch(
+      `https://api.github.com/repos/${owner}/${repo}/commits?per_page=1${branchParam}`,
+      accessToken
+    );
 
     if (!response.ok) {
       throw new Error(`GitHub API error: ${response.status}`);
@@ -109,27 +121,42 @@ export async function getLatestCommit(
   }
 }
 
+/**
+ * Fetch all user repositories with pagination support (paginates through all results).
+ */
 export async function getUserRepos(accessToken: string): Promise<GitHubRepo[]> {
-  const headers = {
-    Authorization: `Bearer ${accessToken}`,
-    Accept: 'application/vnd.github.v3+json',
-    'User-Agent': 'togit-deployer',
-  };
+  const allRepos: GitHubRepo[] = [];
+  let page = 1;
+  const perPage = 100;
 
-  try {
-    const response = await fetch('https://api.github.com/user/repos?per_page=100&sort=updated', {
-      headers,
-    });
+  while (true) {
+    const response = await githubFetch(
+      `https://api.github.com/user/repos?per_page=${perPage}&page=${page}&sort=updated`,
+      accessToken
+    );
 
     if (!response.ok) {
       throw new Error(`GitHub API error: ${response.status}`);
     }
 
-    return (await response.json()) as GitHubRepo[];
-  } catch (error) {
-    console.error('Failed to fetch user repos:', error);
-    throw error;
+    const repos = (await response.json()) as GitHubRepo[];
+    if (repos.length === 0) break;
+
+    allRepos.push(...repos);
+
+    // Check if there are more pages
+    const links = response.headers.get('Link');
+    if (!links || !links.includes('rel="next"')) {
+      break;
+    }
+
+    page++;
+
+    // Safety cap to avoid infinite loops
+    if (page > 20) break;
   }
+
+  return allRepos;
 }
 
 export async function getRepo(
@@ -137,19 +164,11 @@ export async function getRepo(
   repo: string,
   accessToken?: string
 ): Promise<GitHubRepo | null> {
-  const headers: Record<string, string> = {
-    Accept: 'application/vnd.github.v3+json',
-    'User-Agent': 'togit-deployer',
-  };
-
-  if (accessToken) {
-    headers.Authorization = `Bearer ${accessToken}`;
-  }
-
   try {
-    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
-      headers,
-    });
+    const response = await githubFetch(
+      `https://api.github.com/repos/${owner}/${repo}`,
+      accessToken
+    );
 
     if (response.status === 404) {
       return null;

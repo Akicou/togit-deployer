@@ -1,11 +1,19 @@
 import { query } from '../db/client.js';
 import { logSystem, logError } from '../logger/index.js';
-import { deploy } from './deployer.js';
+import { deploy, acquireDeployLock, releaseDeployLock, rollbackingRepos } from './deployer.js';
 import { stopContainer } from './deployer.js';
 import { stopTunnel } from './localtonet.js';
 import type { Repository, Deployment } from '../types.js';
 
 export async function rollbackRepo(repo: Repository): Promise<Deployment | null> {
+  // Prevent infinite rollback loops
+  if (rollbackingRepos.has(repo.id)) {
+    logError(`Rollback already in progress for ${repo.full_name}. Skipping to prevent infinite loop.`);
+    return null;
+  }
+
+  rollbackingRepos.add(repo.id);
+
   logSystem(`Starting rollback for repository: ${repo.full_name}`, { repo_id: repo.id });
 
   // Find the last successful deployment
@@ -19,6 +27,7 @@ export async function rollbackRepo(repo: Repository): Promise<Deployment | null>
 
   if (lastDeploymentResult.rows.length === 0) {
     logSystem(`No running deployment found for rollback: ${repo.full_name}`, { repo_id: repo.id });
+    rollbackingRepos.delete(repo.id);
     return null;
   }
 
@@ -36,8 +45,15 @@ export async function rollbackRepo(repo: Repository): Promise<Deployment | null>
   if (failedDeploymentResult.rows.length > 0) {
     const failedDeployment = failedDeploymentResult.rows[0];
     
-    // Stop the tunnel for failed deployment
-    await stopTunnel(failedDeployment.id);
+    // Stop the tunnel for failed deployment — pass correct args now
+    const authToken = process.env.LOCALTONET_AUTH_TOKEN || '';
+    if (failedDeployment.localtonet_tunnel_id) {
+      try {
+        await stopTunnel(failedDeployment.localtonet_tunnel_id, authToken);
+      } catch (err) {
+        console.error(`Failed to stop tunnel ${failedDeployment.localtonet_tunnel_id}:`, err);
+      }
+    }
 
     // Stop container if exists
     if (failedDeployment.container_id) {
@@ -67,7 +83,9 @@ export async function rollbackRepo(repo: Repository): Promise<Deployment | null>
       lastDeployment.ref,
       lastDeployment.ref_type as 'release' | 'commit',
       null,
-      lastDeployment.env_vars || {}
+      typeof lastDeployment.env_vars === 'string'
+        ? JSON.parse(lastDeployment.env_vars)
+        : (lastDeployment.env_vars || {})
     );
 
     logSystem(
@@ -80,6 +98,8 @@ export async function rollbackRepo(repo: Repository): Promise<Deployment | null>
     const errorMessage = error instanceof Error ? error.message : String(error);
     logError(`Rollback failed: ${errorMessage}`, { repo_id: repo.id });
     throw error;
+  } finally {
+    rollbackingRepos.delete(repo.id);
   }
 }
 

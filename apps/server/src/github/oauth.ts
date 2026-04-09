@@ -7,20 +7,40 @@ const GITHUB_CLIENT_SECRET = process.env.GITHUB_APP_CLIENT_SECRET || '';
 const GITHUB_CALLBACK_URL = process.env.GITHUB_APP_CALLBACK_URL || 'http://localhost:3000/api/auth/callback';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'change_me_random_32chars';
 
-const ALGORITHM = 'aes-256-gcm';
+// Warn at load time if default secret is used (injection point for startup)
+if (SESSION_SECRET === 'change_me_random_32chars') {
+  console.warn('⚠️  WARNING: Using default SESSION_SECRET. Set a strong secret in .env for production.');
+}
 
-function encrypt(text: string): string {
-  const key = crypto.scryptSync(SESSION_SECRET, 'salt', 32);
+const ALGORITHM = 'aes-256-gcm';
+const ENCRYPTION_SALT = 'togit-encryption-v1-salt';
+
+/**
+ * Encrypts a token using AES-256-GCM with a random salt and IV.
+ * Format: salt:iv:tag:ciphertext (all hex-encoded)
+ */
+export function encrypt(text: string): string {
+  const salt = crypto.randomBytes(16);
+  const key = crypto.scryptSync(SESSION_SECRET, salt, 32);
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
   const encrypted = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
-  return `${iv.toString('hex')}:${tag.toString('hex')}:${encrypted.toString('hex')}`;
+  return `${salt.toString('hex')}:${iv.toString('hex')}:${tag.toString('hex')}:${encrypted.toString('hex')}`;
 }
 
-function decrypt(encrypted: string): string {
-  const key = crypto.scryptSync(SESSION_SECRET, 'salt', 32);
-  const [ivHex, tagHex, encryptedHex] = encrypted.split(':');
+/**
+ * Decrypts a token encrypted by the above function.
+ */
+export function decrypt(encrypted: string): string {
+  const parts = encrypted.split(':');
+  if (parts.length !== 4) {
+    // Legacy format (salt:iv:tag:encrypted expected, not iv:tag:encrypted)
+    throw new Error('Invalid encrypted token format');
+  }
+  const [saltHex, ivHex, tagHex, encryptedHex] = parts;
+  const salt = Buffer.from(saltHex, 'hex');
+  const key = crypto.scryptSync(SESSION_SECRET, salt, 32);
   const iv = Buffer.from(ivHex, 'hex');
   const tag = Buffer.from(tagHex, 'hex');
   const encryptedText = Buffer.from(encryptedHex, 'hex');

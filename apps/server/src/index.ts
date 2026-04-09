@@ -5,10 +5,12 @@ import { fileURLToPath } from 'url';
 import { checkConnection, closePool } from './db/client.js';
 import { runMigrations } from './db/migrate.js';
 import { checkLocaltonetInstalled, installLocaltonet } from './daemon/localtonet.js';
-import { checkDockerRunning } from './daemon/deployer.js';
+import { checkDockerRunning, cleanupInterruptedBuilds, pruneUnusedImages } from './daemon/deployer.js';
 import { startScheduler, stopScheduler } from './daemon/scheduler.js';
-import { cleanupInterruptedBuilds } from './daemon/deployer.js';
-import { handleWSOpen, handleWSClose, handleWSError } from './logger/index.js';
+import { cleanupExpiredOAuthStates } from './utils/oauth-states.js';
+import { loadEnvFiles } from './utils/env.js';
+import { parseCookies } from './utils/cookie.js';
+import { handleWSOpen, handleWSClose } from './logger/index.js';
 import type { WSData } from './logger/index.js';
 import { getSession } from './github/oauth.js';
 import { logSystem, logError } from './logger/index.js';
@@ -18,55 +20,24 @@ import * as deploymentsApi from './api/deployments.js';
 import * as logsApi from './api/logs.js';
 import * as usersApi from './api/users.js';
 import * as accessApi from './api/access-requests.js';
+import { handleGitHubWebhook } from './api/webhooks.js';
 import type { User } from './types.js';
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Load environment variables from .env file if it exists
-const envPath = join(__dirname, '../../.env');
-if (existsSync(envPath)) {
-  const envContent = readFileSync(envPath, 'utf-8');
-  for (const line of envContent.split('\n')) {
-    const trimmed = line.trim();
-    if (trimmed && !trimmed.startsWith('#')) {
-      const [key, ...valueParts] = trimmed.split('=');
-      if (key && valueParts.length > 0) {
-        process.env[key.trim()] = valueParts.join('=').trim();
-      }
-    }
-  }
-}
+// Load environment variables from .env files using robust parser
+loadEnvFiles();
 
-// Also check root .env
-const rootEnvPath = join(__dirname, '../../../.env');
-if (existsSync(rootEnvPath)) {
-  const envContent = readFileSync(rootEnvPath, 'utf-8');
-  for (const line of envContent.split('\n')) {
-    const trimmed = line.trim();
-    if (trimmed && !trimmed.startsWith('#')) {
-      const [key, ...valueParts] = trimmed.split('=');
-      if (key && !process.env[key.trim()] && valueParts.length > 0) {
-        process.env[key.trim()] = valueParts.join('=').trim();
-      }
-    }
-  }
-}
+// ─── Authentication middleware ───────────────────────────────────────────────
 
-// Authentication middleware
 async function requireAuth(
   req: Request,
   options: { allowRestricted?: boolean } = {}
 ): Promise<{ user: User; sessionId: string } | Response> {
-  const cookieHeader = req.headers.get('Cookie') || '';
-  const cookies = Object.fromEntries(
-    cookieHeader.split(';').map((c) => {
-      const [key, ...val] = c.trim().split('=');
-      return [key, val.join('=')];
-    })
-  );
-
+  const cookies = parseCookies(req.headers.get('Cookie'));
   const sessionId = cookies['session_id'];
+
   if (!sessionId) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -86,261 +57,276 @@ async function requireAuth(
   return { user: session.user, sessionId };
 }
 
-async function requireRole(user: User, ...roles: string[]): Promise<Response | null> {
-  if (!roles.includes(user.role)) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
+// ─── Simple route matcher ────────────────────────────────────────────────────
+
+/**
+ * Lightweight route matcher. Replaces the if/regex chain in handleRequest.
+ * Returns route params if the path matches the pattern, null otherwise.
+ * Pattern uses :param syntax, e.g. /api/repos/:id/deployments
+ */
+function matchRoute(pattern: string, path: string): Record<string, string> | null {
+  const patternParts = pattern.split('/');
+  const pathParts = path.split('/').filter(Boolean);
+
+  if (patternParts.length !== pathParts.length + 1) return null; // +1 for leading empty
+
+  const params: Record<string, string> = {};
+  for (let i = 1; i < patternParts.length; i++) {
+    const p = patternParts[i];
+    if (p.startsWith(':')) {
+      params[p.slice(1)] = pathParts[i - 1];
+    } else if (p !== pathParts[i - 1]) {
+      return null;
+    }
   }
-  return null;
+
+  return params;
 }
 
-// Request context type
-interface AppContext {
-  user: User;
-  params: Record<string, string>;
-}
+// ─── Request handler ─────────────────────────────────────────────────────────
 
 async function handleRequest(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const path = url.pathname;
 
-  // CORS headers for development
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Credentials': 'true',
+  // CORS headers
+  const addCors = (response: Response): Response => {
+    const origin = process.env.ALLOWED_ORIGIN || '*';
+    const headers = new Headers(response.headers);
+    headers.set('Access-Control-Allow-Origin', origin);
+    headers.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+    headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    headers.set('Access-Control-Allow-Credentials', 'true');
+    return new Response(response.body, { status: response.status, headers });
   };
 
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return addCors(new Response(null));
   }
 
   try {
-    // Public auth routes
+    // ── Public auth routes ───────────────────────────────────────────────────
     if (path === '/api/auth/github' && req.method === 'GET') {
-      return authApi.handleGitHubAuth(req as any);
+      return addCors(await authApi.handleGitHubAuth(req));
     }
-
     if (path.startsWith('/api/auth/callback') && req.method === 'GET') {
-      return authApi.handleCallback(req as any);
+      return addCors(await authApi.handleCallback(req));
     }
 
-    // Auth routes
+    // ── Public webhook routes (no auth — verified via HMAC signature) ────────
+    if (path === '/api/webhooks/github' && req.method === 'POST') {
+      return addCors(await handleGitHubWebhook(req));
+    }
+
+    // ── Auth routes (no auth required for /me, but reads session) ────────────
     if (path === '/api/auth/me' && req.method === 'GET') {
       const authResult = await requireAuth(req, { allowRestricted: true });
-      if (authResult instanceof Response) return authResult;
-      return authApi.handleMe(req as any);
+      if (authResult instanceof Response) return addCors(authResult);
+      return addCors(await authApi.handleMe(req));
     }
-
     if (path === '/api/auth/logout' && req.method === 'POST') {
-      return authApi.handleLogout(req as any);
+      return addCors(await authApi.handleLogout(req));
     }
 
-    // Protected routes - require authentication
+    // ── All protected routes require authentication ─────────────────────────
     const authResult = await requireAuth(req);
     if (authResult instanceof Response) {
-      // Redirect to login if accessing app routes
       if (!path.startsWith('/api/')) {
         return Response.redirect('/login', 302);
       }
-      return authResult;
+      return addCors(authResult);
     }
-
     const { user } = authResult;
 
-    // Repository routes
+    // ── Repository routes ────────────────────────────────────────────────────
     if (path === '/api/repos' && req.method === 'GET') {
-      return reposApi.listRepos(req as any, user);
+      return addCors(await reposApi.listRepos(req, user));
     }
-
     if (path === '/api/repos/search' && req.method === 'GET') {
-      return reposApi.searchGitHubRepos(req as any, user);
+      return addCors(await reposApi.searchGitHubRepos(req, user));
     }
-
     if (path === '/api/repos' && req.method === 'POST') {
-      return reposApi.addRepo(req as any, user);
+      return addCors(await reposApi.addRepo(req, user));
     }
 
-    const repoIdMatch = path.match(/^\/api\/repos\/(\d+)$/);
-    if (repoIdMatch) {
-      const repoId = parseInt(repoIdMatch[1], 10);
+    let params: Record<string, string> | null;
 
-      if (req.method === 'PATCH') {
-        return reposApi.updateRepo(req as any, user, repoId);
-      }
-
-      if (req.method === 'DELETE') {
-        return reposApi.deleteRepo(req as any, user, repoId);
-      }
+    // PATCH/DELETE /api/repos/:id
+    params = matchRoute('/api/repos/:id', path);
+    if (params && (req.method === 'PATCH' || req.method === 'DELETE')) {
+      const repoId = parseInt(params.id, 10);
+      if (isNaN(repoId)) return addCors(Response.json({ error: 'Invalid repo ID' }, { status: 400 }));
+      if (req.method === 'PATCH') return addCors(await reposApi.updateRepo(req, user, repoId));
+      if (req.method === 'DELETE') return addCors(await reposApi.deleteRepo(req, user, repoId));
     }
 
-    const repoDeployMatch = path.match(/^\/api\/repos\/(\d+)\/deployments$/);
-    if (repoDeployMatch) {
-      const repoId = parseInt(repoDeployMatch[1], 10);
-      return reposApi.getRepoDeployments(req as any, repoId);
+    // GET /api/repos/:id/deployments
+    params = matchRoute('/api/repos/:id/deployments', path);
+    if (params && req.method === 'GET') {
+      const repoId = parseInt(params.id, 10);
+      if (isNaN(repoId)) return addCors(Response.json({ error: 'Invalid repo ID' }, { status: 400 }));
+      return addCors(await reposApi.getRepoDeployments(req, repoId));
     }
 
-    const repoDeployTriggerMatch = path.match(/^\/api\/repos\/(\d+)\/deploy$/);
-    if (repoDeployTriggerMatch) {
-      const repoId = parseInt(repoDeployTriggerMatch[1], 10);
-      return reposApi.triggerDeploy(req as any, user, repoId);
+    // POST /api/repos/:id/deploy
+    params = matchRoute('/api/repos/:id/deploy', path);
+    if (params && req.method === 'POST') {
+      const repoId = parseInt(params.id, 10);
+      if (isNaN(repoId)) return addCors(Response.json({ error: 'Invalid repo ID' }, { status: 400 }));
+      return addCors(await reposApi.triggerDeploy(req, user, repoId));
     }
 
-    // Get .env.example from repository
-    const repoEnvExampleMatch = path.match(/^\/api\/repos\/(\d+)\/env-example$/);
-    if (repoEnvExampleMatch && req.method === 'GET') {
-      const repoId = parseInt(repoEnvExampleMatch[1], 10);
-      return reposApi.getEnvExample(req as any, user, repoId);
+    // GET /api/repos/:id/env-example
+    params = matchRoute('/api/repos/:id/env-example', path);
+    if (params && req.method === 'GET') {
+      const repoId = parseInt(params.id, 10);
+      if (isNaN(repoId)) return addCors(Response.json({ error: 'Invalid repo ID' }, { status: 400 }));
+      return addCors(await reposApi.getEnvExample(req, user, repoId));
     }
 
-    // Deployment routes
-    const deployIdMatch = path.match(/^\/api\/deployments\/(\d+)$/);
-    if (deployIdMatch) {
-      const deploymentId = parseInt(deployIdMatch[1], 10);
-      if (req.method === 'DELETE') {
-        return deploymentsApi.deleteDeployment(req as any, deploymentId, user);
-      }
-      return deploymentsApi.getDeployment(req as any, deploymentId);
+    // ── Deployment routes ────────────────────────────────────────────────────
+    // GET/DELETE /api/deployments/:id
+    params = matchRoute('/api/deployments/:id', path);
+    if (params) {
+      const deploymentId = parseInt(params.id, 10);
+      if (isNaN(deploymentId)) return addCors(Response.json({ error: 'Invalid deployment ID' }, { status: 400 }));
+      if (req.method === 'GET') return addCors(await deploymentsApi.getDeployment(req, deploymentId));
+      if (req.method === 'DELETE') return addCors(await deploymentsApi.deleteDeployment(req, deploymentId, user));
     }
 
-    const deployLogsMatch = path.match(/^\/api\/deployments\/(\d+)\/logs$/);
-    if (deployLogsMatch) {
-      const deploymentId = parseInt(deployLogsMatch[1], 10);
-      return deploymentsApi.getDeploymentLogs(req as any, deploymentId);
+    // GET /api/deployments/:id/logs
+    params = matchRoute('/api/deployments/:id/logs', path);
+    if (params && req.method === 'GET') {
+      const deploymentId = parseInt(params.id, 10);
+      if (isNaN(deploymentId)) return addCors(Response.json({ error: 'Invalid deployment ID' }, { status: 400 }));
+      return addCors(await deploymentsApi.getDeploymentLogs(req, deploymentId));
     }
 
     if (path === '/api/deployments/recent' && req.method === 'GET') {
-      return deploymentsApi.listRecentDeployments(req as any);
+      return addCors(await deploymentsApi.listRecentDeployments(req));
     }
 
-    // Tunnel management routes
+    // ── Tunnel management routes ─────────────────────────────────────────────
     if (path === '/api/tunnels' && req.method === 'GET') {
-      return deploymentsApi.listActiveTunnels(req as any, user);
+      return addCors(await deploymentsApi.listActiveTunnels(req, user));
     }
 
-    if (path.match(/^\/api\/tunnels\/(\d+)\/stop$/) && req.method === 'POST') {
-      const match = path.match(/^\/api\/tunnels\/(\d+)\/stop$/);
-      if (match) {
-        const deploymentId = parseInt(match[1], 10);
-        return deploymentsApi.stopTunnel(req as any, user, deploymentId);
-      }
+    params = matchRoute('/api/tunnels/:id/stop', path);
+    if (params && req.method === 'POST') {
+      const deploymentId = parseInt(params.id, 10);
+      if (isNaN(deploymentId)) return addCors(Response.json({ error: 'Invalid tunnel ID' }, { status: 400 }));
+      return addCors(await deploymentsApi.stopTunnel(req, user, deploymentId));
     }
 
     if (path === '/api/tunnels/test' && req.method === 'POST') {
-      return deploymentsApi.testLocaltonetConnection(req as any, user);
+      return addCors(await deploymentsApi.testLocaltonetConnection(req, user));
     }
 
-    if (path.match(/^\/api\/tunnels\/(\d+)\/status$/) && req.method === 'GET') {
-      const match = path.match(/^\/api\/tunnels\/(\d+)\/status$/);
-      if (match) {
-        const tunnelId = match[1];
-        return deploymentsApi.getTunnelStatus(req as any, user, tunnelId);
-      }
+    params = matchRoute('/api/tunnels/:id/status', path);
+    if (params && req.method === 'GET') {
+      return addCors(await deploymentsApi.getTunnelStatus(req, user, params.id));
     }
 
-    // Log routes
+    // ── Log routes ───────────────────────────────────────────────────────────
     if (path === '/api/logs' && req.method === 'GET') {
-      return logsApi.getGlobalLogs(req as any);
+      return addCors(await logsApi.getGlobalLogs(req));
     }
-
     if (path === '/api/stats' && req.method === 'GET') {
-      return logsApi.getStats(req as any);
+      return addCors(await logsApi.getStats(req));
     }
-
     if (path === '/api/system/status' && req.method === 'GET') {
-      return logsApi.getSystemStatus(req as any);
+      return addCors(await logsApi.getSystemStatus(req));
     }
 
-    // User routes
+    // ── User routes ──────────────────────────────────────────────────────────
     if (path === '/api/users' && req.method === 'GET') {
-      return usersApi.listUsers(req as any, user);
+      return addCors(await usersApi.listUsers(req, user));
     }
 
-    const userIdMatch = path.match(/^\/api\/users\/(\d+)$/);
-    if (userIdMatch) {
-      const targetUserId = parseInt(userIdMatch[1], 10);
-
-      if (req.method === 'PATCH') {
-        return usersApi.updateUserRole(req as any, user, targetUserId);
-      }
+    params = matchRoute('/api/users/:id', path);
+    if (params && req.method === 'PATCH') {
+      const targetUserId = parseInt(params.id, 10);
+      if (isNaN(targetUserId)) return addCors(Response.json({ error: 'Invalid user ID' }, { status: 400 }));
+      return addCors(await usersApi.updateUserRole(req, user, targetUserId));
     }
 
-    const userPermMatch = path.match(/^\/api\/users\/(\d+)\/permissions$/);
-    if (userPermMatch) {
-      const targetUserId = parseInt(userPermMatch[1], 10);
-      return usersApi.getUserPermissions(req as any, user, targetUserId);
+    params = matchRoute('/api/users/:id/permissions', path);
+    if (params && req.method === 'GET') {
+      const targetUserId = parseInt(params.id, 10);
+      if (isNaN(targetUserId)) return addCors(Response.json({ error: 'Invalid user ID' }, { status: 400 }));
+      return addCors(await usersApi.getUserPermissions(req, user, targetUserId));
     }
 
-    const userRepoPermMatch = path.match(/^\/api\/users\/(\d+)\/permissions\/(\d+)$/);
-    if (userRepoPermMatch) {
-      const targetUserId = parseInt(userRepoPermMatch[1], 10);
-      const repoId = parseInt(userRepoPermMatch[2], 10);
-
-      if (req.method === 'PATCH') {
-        return usersApi.updateUserPermission(req as any, user, targetUserId, repoId);
-      }
+    params = matchRoute('/api/users/:id/permissions/:repoId', path);
+    if (params && req.method === 'PATCH') {
+      const targetUserId = parseInt(params.id, 10);
+      const repoId = parseInt(params.repoId, 10);
+      if (isNaN(targetUserId) || isNaN(repoId)) return addCors(Response.json({ error: 'Invalid IDs' }, { status: 400 }));
+      return addCors(await usersApi.updateUserPermission(req, user, targetUserId, repoId));
     }
 
-    // Settings routes
+    // ── Settings routes ──────────────────────────────────────────────────────
     if (path === '/api/settings' && req.method === 'GET') {
-      return usersApi.getSettings(req as any);
+      return addCors(await usersApi.getSettings(req));
     }
-
     if (path === '/api/settings' && req.method === 'PATCH') {
-      return usersApi.updateSettings(req as any, user);
+      return addCors(await usersApi.updateSettings(req, user));
     }
-
     if (path === '/api/system/config' && req.method === 'GET') {
-      return usersApi.getSystemConfig(req as any);
+      return addCors(await usersApi.getSystemConfig(req));
     }
 
-    // Access request routes
-    // POST /api/access-requests — create (allow restricted users)
-    const authResultForAR = await requireAuth(req, { allowRestricted: true });
+    // ── Image pruning (new endpoint) ─────────────────────────────────────────
+    if (path === '/api/images/prune' && req.method === 'POST') {
+      if (user.role !== 'admin') {
+        return addCors(Response.json({ error: 'Only admins can prune images' }, { status: 403 }));
+      }
+      return addCors(Response.json(await pruneUnusedImages()));
+    }
+
+    // ── Access request routes ────────────────────────────────────────────────
+    // POST — create (allow restricted users)
     if (path === '/api/access-requests' && req.method === 'POST') {
-      if (authResultForAR instanceof Response) return authResultForAR;
-      return accessApi.createAccessRequest(req as any, authResultForAR.user);
+      const restrictedAuth = await requireAuth(req, { allowRestricted: true });
+      if (restrictedAuth instanceof Response) return addCors(restrictedAuth);
+      return addCors(await accessApi.createAccessRequest(req, restrictedAuth.user));
     }
-
-    // GET /api/access-requests — list (admin only)
+    // GET — list (admin only)
     if (path === '/api/access-requests' && req.method === 'GET') {
-      return accessApi.listAccessRequests(req as any, user);
+      return addCors(await accessApi.listAccessRequests(req, user));
+    }
+    // PATCH /api/access-requests/:id
+    params = matchRoute('/api/access-requests/:id', path);
+    if (params && req.method === 'PATCH') {
+      const targetUserId = parseInt(params.id, 10);
+      if (isNaN(targetUserId)) return addCors(Response.json({ error: 'Invalid user ID' }, { status: 400 }));
+      return addCors(await accessApi.updateAccessRequest(req, user, targetUserId));
+    }
+    // POST /api/access-requests/:id/kick
+    params = matchRoute('/api/access-requests/:id/kick', path);
+    if (params && req.method === 'POST') {
+      const targetUserId = parseInt(params.id, 10);
+      if (isNaN(targetUserId)) return addCors(Response.json({ error: 'Invalid user ID' }, { status: 400 }));
+      return addCors(await accessApi.kickUser(req, user, targetUserId));
+    }
+    // POST /api/access-requests/:id/unban
+    params = matchRoute('/api/access-requests/:id/unban', path);
+    if (params && req.method === 'POST') {
+      const targetUserId = parseInt(params.id, 10);
+      if (isNaN(targetUserId)) return addCors(Response.json({ error: 'Invalid user ID' }, { status: 400 }));
+      return addCors(await accessApi.unbanUser(req, user, targetUserId));
     }
 
-    // PATCH /api/access-requests/:userId — approve/block/ban
-    const arMatch = path.match(/^\/api\/access-requests\/(\d+)$/);
-    if (arMatch && req.method === 'PATCH') {
-      const targetUserId = parseInt(arMatch[1], 10);
-      return accessApi.updateAccessRequest(req as any, user, targetUserId);
-    }
-
-    // POST /api/access-requests/:userId/kick
-    const arKickMatch = path.match(/^\/api\/access-requests\/(\d+)\/kick$/);
-    if (arKickMatch && req.method === 'POST') {
-      const targetUserId = parseInt(arKickMatch[1], 10);
-      return accessApi.kickUser(req as any, user, targetUserId);
-    }
-
-    // POST /api/access-requests/:userId/unban
-    const arUnbanMatch = path.match(/^\/api\/access-requests\/(\d+)\/unban$/);
-    if (arUnbanMatch && req.method === 'POST') {
-      const targetUserId = parseInt(arUnbanMatch[1], 10);
-      return accessApi.unbanUser(req as any, user, targetUserId);
-    }
-
-    // Serve static files for production
+    // ── Serve static files (production) ──────────────────────────────────────
     if (process.env.NODE_ENV === 'production') {
       const staticPath = join(__dirname, '../../web/dist');
-      
-      // Try exact path match
+
       let filePath = join(staticPath, path.substring(1));
       if (existsSync(filePath) && !filePath.endsWith('/')) {
         return new Response(readFileSync(filePath), {
           headers: { 'Content-Type': getMimeType(filePath) },
         });
       }
-
-      // Try index.html for SPA routes
       if (!path.startsWith('/api/')) {
         const indexPath = join(staticPath, 'index.html');
         if (existsSync(indexPath)) {
@@ -351,9 +337,9 @@ async function handleRequest(req: Request): Promise<Response> {
       }
     }
 
-    return Response.json({ error: 'Not found' }, { status: 404 });
+    return addCors(Response.json({ error: 'Not found' }, { status: 404 }));
   } catch (error) {
-    console.error('Request error:', error);
+    logError(`Request error: ${error instanceof Error ? error.message : String(error)}`);
     return Response.json(
       { error: 'Internal server error', message: error instanceof Error ? error.message : String(error) },
       { status: 500 }
@@ -375,7 +361,7 @@ function getMimeType(filePath: string): string {
     gif: 'image/gif',
     svg: 'image/svg+xml',
     ico: 'image/x-icon',
-   woff: 'font/woff',
+    woff: 'font/woff',
     woff2: 'font/woff2',
     ttf: 'font/ttf',
     eot: 'application/vnd.ms-fontobject',
@@ -383,10 +369,12 @@ function getMimeType(filePath: string): string {
   return mimeTypes[ext || ''] || 'application/octet-stream';
 }
 
+// ─── Startup ─────────────────────────────────────────────────────────────────
+
 async function startup(): Promise<void> {
   console.log('\n🚀 togit-deployer starting...\n');
 
-  // Run database migrations
+  // Check database
   console.log('📦 Checking database...');
   const dbConnected = await checkConnection();
   if (!dbConnected) {
@@ -407,28 +395,21 @@ async function startup(): Promise<void> {
   }
   console.log('✅ Docker is running');
 
-  // Check/Install Localtonet
+  // Check Localtonet
   console.log('\n🌐 Checking Localtonet...');
   const localtonetInstalled = await checkLocaltonetInstalled();
   if (!localtonetInstalled) {
-    console.log('   Localtonet not found, installing...');
-    try {
-      await installLocaltonet();
-      console.log('✅ Localtonet installed');
-    } catch (error) {
-      console.error('❌ Failed to install Localtonet:', error);
-      console.log('   Please install manually: curl -fsSL https://localtonet.com/install.sh | sh');
-    }
+    console.warn('⚠️  LOCALTONET_AUTH_TOKEN not configured. Tunnel features will be unavailable.');
   } else {
-    console.log('✅ Localtonet is installed');
+    console.log('✅ Localtonet token configured');
   }
 
-  // Clean up interrupted deployments from previous runs
+  // Clean up interrupted deployments
   console.log('\n🧹 Cleaning up interrupted deployments...');
   await cleanupInterruptedBuilds();
   console.log('✅ Cleanup completed');
 
-  // Start the scheduler
+  // Start scheduler
   console.log('\n⏰ Starting deployment scheduler...');
   await startScheduler();
   console.log('✅ Scheduler started');
@@ -441,6 +422,8 @@ async function startup(): Promise<void> {
   console.log(`  📊 API:      http://localhost:${PORT}/api`);
   console.log('═══════════════════════════════════════════════════════\n');
 }
+
+// ─── Shutdown ────────────────────────────────────────────────────────────────
 
 async function shutdown(): Promise<void> {
   console.log('\n🛑 Shutting down gracefully...');
@@ -483,7 +466,16 @@ async function shutdown(): Promise<void> {
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
-// Start the server
+// Periodic cleanup of expired OAuth states (every hour)
+setInterval(async () => {
+  try {
+    const count = await cleanupExpiredOAuthStates();
+    if (count > 0) console.log(`Cleaned up ${count} expired OAuth states`);
+  } catch (err) {}
+}, 60 * 60 * 1000);
+
+// ─── Bun server ──────────────────────────────────────────────────────────────
+
 const server = serve<WSData>({
   port: PORT,
   async fetch(req, server) {
@@ -503,34 +495,26 @@ const server = serve<WSData>({
 
     const response = await handleRequest(req);
 
-    // Add CORS headers
-    const corsHeaders = {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Access-Control-Allow-Credentials': 'true',
-    };
-
-    // Clone response to add headers
-    const newHeaders = new Headers(response.headers);
-    for (const [key, value] of Object.entries(corsHeaders)) {
-      newHeaders.set(key, value);
+    if (response.status !== 302 && response.status !== 301) {
+      const origin = process.env.ALLOWED_ORIGIN || '*';
+      const headers = new Headers(response.headers);
+      headers.set('Access-Control-Allow-Origin', origin);
+      headers.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+      headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      headers.set('Access-Control-Allow-Credentials', 'true');
+      return new Response(response.body, { status: response.status, headers });
     }
 
-    return new Response(response.body, {
-      status: response.status,
-      headers: newHeaders,
-    });
+    return response;
   },
   websocket: {
     open: handleWSOpen,
     close: handleWSClose,
-    error: handleWSError,
     message(_ws, _message) {},
   },
 });
 
-// Run startup and then start accepting requests
+// Run startup then start accepting requests
 startup().catch((error) => {
   console.error('Startup error:', error);
   process.exit(1);

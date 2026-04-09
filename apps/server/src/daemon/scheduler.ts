@@ -1,7 +1,7 @@
 import { query } from '../db/client.js';
 import { getLatestRelease, getLatestCommit, getLastDeployedRef } from '../github/api.js';
 import { decryptAccessToken } from '../github/oauth.js';
-import { deploy } from './deployer.js';
+import { deploy, acquireDeployLock, releaseDeployLock } from './deployer.js';
 import { logSystem, logError } from '../logger/index.js';
 import type { Repository, User } from '../types.js';
 
@@ -44,9 +44,10 @@ export async function getRepoAccessToken(repoId: number): Promise<string> {
 }
 
 export async function checkForUpdates(repo: Repository): Promise<{ hasUpdate: boolean; ref: string; refType: 'release' | 'commit' }> {
-  // Skip if a deployment is already in progress
+  // Skip if a deployment is actively being created (pending/building).
+  // 'running' means the app is live and should NOT block future deployments.
   const inProgress = await query<{ id: number }>(
-    `SELECT id FROM deployments WHERE repo_id = $1 AND status IN ('pending', 'building', 'running') LIMIT 1`,
+    `SELECT id FROM deployments WHERE repo_id = $1 AND status IN ('pending', 'building') LIMIT 1`,
     [repo.id]
   );
   if (inProgress.rows.length > 0) {
@@ -122,7 +123,22 @@ export async function runSchedulerTick(): Promise<void> {
 
         if (hasUpdate) {
           logSystem(`New ${refType} detected for ${repo.full_name}: ${ref}`);
-          await deploy(repo, ref, refType, null, repo.deployment_env_vars || {});
+          
+          // Acquire per-repo deploy lock to prevent concurrent deploys
+          const hasLock = await acquireDeployLock(repo.id);
+          if (!hasLock) {
+            logSystem(`Skipping ${repo.full_name} — deploy already in progress`);
+            continue;
+          }
+          
+          try {
+            const repoEnvVars = typeof repo.deployment_env_vars === 'string'
+              ? JSON.parse(repo.deployment_env_vars)
+              : (repo.deployment_env_vars || {});
+            await deploy(repo, ref, refType, null, repoEnvVars);
+          } finally {
+            releaseDeployLock(repo.id);
+          }
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);

@@ -7,26 +7,14 @@ import {
   createSession,
   getSession,
   deleteSession,
-  generateState,
 } from '../github/oauth.js';
 import { logSystem } from '../logger/index.js';
 import type { User } from '../types.js';
-
-// Store for OAuth states (in production, use Redis or DB)
-const oauthStates = new Map<string, { expiresAt: number }>();
-
-function setCookie(res: Response, name: string, value: string, maxAge: number): void {
-  res.headers.append('Set-Cookie', `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`);
-}
-
-function deleteCookie(res: Response, name: string): void {
-  res.headers.append('Set-Cookie', `${name}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
-}
+import { setCookie, clearCookie, parseCookies } from '../utils/cookie.js';
+import { generateAndStoreOAuthState, validateAndConsumeOAuthState } from '../utils/oauth-states.js';
 
 export async function handleGitHubAuth(req: Request): Promise<Response> {
-  const state = generateState();
-  oauthStates.set(state, { expiresAt: Date.now() + 10 * 60 * 1000 }); // 10 minutes
-
+  const state = await generateAndStoreOAuthState();
   const authUrl = getAuthorizationUrl(state);
   return Response.redirect(authUrl, 302);
 }
@@ -38,7 +26,7 @@ export async function handleCallback(req: Request): Promise<Response> {
   const error = url.searchParams.get('error');
 
   if (error) {
-    return new Response(JSON.stringify({ error: error }), {
+    return new Response(JSON.stringify({ error }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -51,15 +39,14 @@ export async function handleCallback(req: Request): Promise<Response> {
     });
   }
 
-  // Validate state
-  const storedState = oauthStates.get(state);
-  if (!storedState || storedState.expiresAt < Date.now()) {
+  // Validate state from DB (prevents replay attacks, survives restarts)
+  const isValid = await validateAndConsumeOAuthState(state);
+  if (!isValid) {
     return new Response(JSON.stringify({ error: 'Invalid or expired state' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     });
   }
-  oauthStates.delete(state);
 
   try {
     // Exchange code for access token
@@ -79,7 +66,7 @@ export async function handleCallback(req: Request): Promise<Response> {
 
     // Create response with redirect to dashboard
     const response = Response.redirect('/dashboard', 302);
-    setCookie(response, 'session_id', sessionId, 7 * 24 * 60 * 60); // 7 days
+    setCookie(response.headers, 'session_id', sessionId, { maxAge: 7 * 24 * 60 * 60 });
 
     return response;
   } catch (error) {
@@ -93,13 +80,7 @@ export async function handleCallback(req: Request): Promise<Response> {
 
 export async function handleMe(req: Request): Promise<Response> {
   const cookieHeader = req.headers.get('Cookie') || '';
-  const cookies = Object.fromEntries(
-    cookieHeader.split(';').map(c => {
-      const [key, ...val] = c.trim().split('=');
-      return [key, val.join('=')];
-    })
-  );
-  const sessionId = cookies['session_id'] as string | undefined;
+  const sessionId = parseCookies(cookieHeader)['session_id'];
   
   if (!sessionId) {
     return Response.json({ error: 'Not authenticated' }, { status: 401 });
@@ -127,13 +108,7 @@ export async function handleMe(req: Request): Promise<Response> {
 
 export async function handleLogout(req: Request): Promise<Response> {
   const cookieHeader = req.headers.get('Cookie') || '';
-  const cookies = Object.fromEntries(
-    cookieHeader.split(';').map(c => {
-      const [key, ...val] = c.trim().split('=');
-      return [key, val.join('=')];
-    })
-  );
-  const sessionId = cookies['session_id'] as string | undefined;
+  const sessionId = parseCookies(cookieHeader)['session_id'];
   
   if (sessionId) {
     await deleteSession(sessionId);
@@ -141,6 +116,6 @@ export async function handleLogout(req: Request): Promise<Response> {
   }
 
   const response = Response.redirect('/login', 302);
-  deleteCookie(response, 'session_id');
+  clearCookie(response.headers, 'session_id');
   return response;
 }

@@ -9,14 +9,35 @@ interface LocaltonetTunnel {
   status: number;
 }
 
+/**
+ * Checks if Localtonet is configured and usable.
+ * Since Localtonet uses the HTTP API (no CLI), we verify
+ * the token is set and perform a lightweight connectivity test.
+ */
 export async function checkLocaltonetInstalled(): Promise<boolean> {
-  return !!(process.env.LOCALTONET_AUTH_TOKEN);
+  if (!process.env.LOCALTONET_AUTH_TOKEN) return false;
+
+  // Do a lightweight test to verify the token actually works
+  try {
+    const response = await fetch(`${LOCALTONET_API}/tunnels`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${process.env.LOCALTONET_AUTH_TOKEN}` },
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
+/**
+ * Localtonet no longer requires CLI installation — it uses an HTTP API.
+ * This function is now a no-op; the check is done via checkLocaltonetInstalled().
+ */
 export async function installLocaltonet(): Promise<void> {
-  throw new Error(
-    'Localtonet now uses the HTTP API. Set LOCALTONET_AUTH_TOKEN in your .env file.'
-  );
+  // No installation needed — Localtonet uses a REST API.
+  // Ensure LOCALTONET_AUTH_TOKEN is set in your .env file.
+  console.log('ℹ️  Localtonet uses the HTTP API. No CLI installation needed.');
+  console.log('   Set LOCALTONET_AUTH_TOKEN in your .env file to enable tunnels.');
 }
 
 export async function startTunnel(

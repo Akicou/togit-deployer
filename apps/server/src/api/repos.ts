@@ -1,5 +1,5 @@
 import { query } from '../db/client.js';
-import { deploy } from '../daemon/deployer.js';
+import { deploy, acquireDeployLock, releaseDeployLock } from '../daemon/deployer.js';
 import { getUserRepos } from '../github/api.js';
 import { decryptAccessToken } from '../github/oauth.js';
 import { z } from 'zod';
@@ -23,7 +23,7 @@ const updateRepoSchema = z.object({
 
 export async function listRepos(req: Request, user: User): Promise<Response> {
   let queryText = `
-    SELECT r.*, 
+    SELECT r.*,
            d.ref as last_deployed_ref,
            d.ref_type as last_deployed_ref_type,
            d.status as last_deployment_status,
@@ -46,7 +46,7 @@ export async function listRepos(req: Request, user: User): Promise<Response> {
       WHERE r.enabled = true
       AND (
         r.id IN (
-          SELECT repo_id FROM user_repo_permissions 
+          SELECT repo_id FROM user_repo_permissions
           WHERE user_id = $1 AND can_view = true
         )
         OR r.added_by = $1
@@ -142,7 +142,8 @@ export async function updateRepo(req: Request, user: User, repoId: number): Prom
     values.push(parsed.data.enabled);
   }
   if (parsed.data.deployment_env_vars !== undefined) {
-    updates.push(`deployment_env_vars = $${paramIndex++}`);
+    // Pass plain object — node-postgres serializes JSONB automatically
+    updates.push(`deployment_env_vars = $${paramIndex++}::jsonb`);
     values.push(JSON.stringify(parsed.data.deployment_env_vars));
   }
 
@@ -222,12 +223,9 @@ export async function triggerDeploy(req: Request, user: User, repoId: number): P
 
   const repo = repoResult.rows[0];
 
-  // Block if a deployment is already in progress
-  const inProgress = await query<{ id: number }>(
-    `SELECT id FROM deployments WHERE repo_id = $1 AND status IN ('pending', 'building') LIMIT 1`,
-    [repoId]
-  );
-  if (inProgress.rows.length > 0) {
+  // Acquire per-repo deploy lock to prevent concurrent deploys
+  const hasLock = await acquireDeployLock(repoId);
+  if (!hasLock) {
     return Response.json({ error: 'A deployment is already in progress for this repository' }, { status: 409 });
   }
 
@@ -236,7 +234,7 @@ export async function triggerDeploy(req: Request, user: User, repoId: number): P
   try {
     const body = await req.json();
     if (typeof body === 'object' && body !== null && 'env_vars' in body) {
-      env_vars = body.env_vars || {};
+      env_vars = (body.env_vars as Record<string, string>) || {};
     }
   } catch {
     // ignore invalid json
@@ -246,30 +244,37 @@ export async function triggerDeploy(req: Request, user: User, repoId: number): P
   let ref: string;
   let refType: 'release' | 'commit';
 
-  if (repo.deploy_mode === 'release') {
-    const { getLatestRelease } = await import('../github/api.js');
-    const release = await getLatestRelease(repo.owner, repo.name, undefined, repo.watch_branch);
-    if (!release) {
-      return Response.json({ error: 'No releases found' }, { status: 404 });
-    }
-    ref = release.tag_name;
-    refType = 'release';
-  } else {
-    const { getLatestCommit } = await import('../github/api.js');
-    const commit = await getLatestCommit(repo.owner, repo.name, undefined, repo.watch_branch);
-    if (!commit) {
-      return Response.json({ error: 'No commits found' }, { status: 404 });
-    }
-    ref = commit.sha;
-    refType = 'commit';
-  }
-
   try {
+    // Get access token for private repos
+    const repoEnvVars = typeof repo.deployment_env_vars === 'string'
+      ? JSON.parse(repo.deployment_env_vars)
+      : (repo.deployment_env_vars || {});
+
+    if (repo.deploy_mode === 'release') {
+      const { getLatestRelease } = await import('../github/api.js');
+      const release = await getLatestRelease(repo.owner, repo.name, undefined, repo.watch_branch);
+      if (!release) {
+        return Response.json({ error: 'No releases found' }, { status: 404 });
+      }
+      ref = release.tag_name;
+      refType = 'release';
+    } else {
+      const { getLatestCommit } = await import('../github/api.js');
+      const commit = await getLatestCommit(repo.owner, repo.name, undefined, repo.watch_branch);
+      if (!commit) {
+        return Response.json({ error: 'No commits found' }, { status: 404 });
+      }
+      ref = commit.sha;
+      refType = 'commit';
+    }
+
     const deployment = await deploy(repo, ref, refType, user, env_vars);
     return Response.json({ deployment }, { status: 201 });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     return Response.json({ error: errorMessage }, { status: 500 });
+  } finally {
+    releaseDeployLock(repoId);
   }
 }
 
@@ -296,8 +301,8 @@ export async function getEnvExample(req: Request, user: User, repoId: number): P
     const accessToken = decryptAccessToken(tokenResult.rows[0].github_access_token);
 
     // Fetch .env.example from the repository
-    const path = repoData.root_path === '/' ? '.env.example' : `${repoData.root_path}/.env.example`;
-    const url = `https://api.github.com/repos/${repoData.owner}/${repoData.name}/contents/${path}?ref=${repoData.watch_branch}`;
+    const encodedPath = encodeURIComponent(repoData.root_path === '/' ? '.env.example' : `${repoData.root_path}/.env.example`);
+    const url = `https://api.github.com/repos/${repoData.owner}/${repoData.name}/contents/${encodedPath}?ref=${repoData.watch_branch}`;
 
     const response = await fetch(url, {
       headers: {
@@ -357,6 +362,7 @@ export async function searchGitHubRepos(req: Request, user: User): Promise<Respo
     }
 
     const accessToken = decryptAccessToken(tokenResult.rows[0].github_access_token);
+    // Fetch all user repos with pagination handling
     const repos = await getUserRepos(accessToken);
 
     // Filter by query if provided

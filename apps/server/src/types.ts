@@ -21,7 +21,8 @@ export interface Repository {
   watch_branch: string;
   enabled: boolean;
   added_by: number | null;
-  deployment_env_vars: Record<string, string>;
+  // JSONB column — node-postgres automatically parses JSONB to objects
+  deployment_env_vars: Record<string, string> | string;
   created_at: Date;
 }
 
@@ -101,12 +102,7 @@ export interface WebSocketLogMessage {
   deployment_id?: number;
 }
 
-// Extend Bun Request to include user
-declare global {
-  namespace App {
-    interface Locals {
-      user?: User;
-      session?: Session;
-    }
-  }
-}
+// Note: The App.Locals pattern is a Bun/Hono convention.
+// Since this app uses a raw fetch() handler without a middleware framework,
+// Locals are not populated. Authentication is handled via cookie extraction
+// in requireAuth(). See utils/cookie.ts for cookie utilities.
