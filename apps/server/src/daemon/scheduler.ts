@@ -55,20 +55,33 @@ export async function checkForUpdates(repo: Repository): Promise<{ hasUpdate: bo
     return { hasUpdate: false, ref: '', refType: 'release' };
   }
 
+  // Check if there's ANY deployment history for this repo
+  // If no history exists, skip auto-deployment (first deploy must be manual)
+  const hasHistory = await query<{ count: number }>(
+    `SELECT COUNT(*) as count FROM deployments WHERE repo_id = $1`,
+    [repo.id]
+  );
+  const hasAnyDeployment = hasHistory.rows[0]?.count > 0;
+
   const accessToken = await getRepoAccessToken(repo.id);
 
   if (repo.deploy_mode === 'release') {
     // Check for new releases
     const latestRelease = await getLatestRelease(repo.owner, repo.name, accessToken, repo.watch_branch);
-    
+
     if (!latestRelease) {
       return { hasUpdate: false, ref: '', refType: 'release' };
     }
 
     const lastDeployed = await getLastDeployedRef(repo.id);
-    
+
     if (!lastDeployed) {
-      // First deploy
+      // No running deployment - only auto-deploy if there's history (not first deploy)
+      if (!hasAnyDeployment) {
+        logSystem(`Skipping ${repo.full_name} - no deployment history (first deploy must be manual)`);
+        return { hasUpdate: false, ref: '', refType: 'release' };
+      }
+      // Has history but no running deployment - trigger deploy
       return { hasUpdate: true, ref: latestRelease.tag_name, refType: 'release' };
     }
 
@@ -83,15 +96,20 @@ export async function checkForUpdates(repo: Repository): Promise<{ hasUpdate: bo
   } else {
     // Check for new commits
     const latestCommit = await getLatestCommit(repo.owner, repo.name, accessToken, repo.watch_branch);
-    
+
     if (!latestCommit) {
       return { hasUpdate: false, ref: '', refType: 'commit' };
     }
 
     const lastDeployed = await getLastDeployedRef(repo.id);
-    
+
     if (!lastDeployed) {
-      // First deploy
+      // No running deployment - only auto-deploy if there's history (not first deploy)
+      if (!hasAnyDeployment) {
+        logSystem(`Skipping ${repo.full_name} - no deployment history (first deploy must be manual)`);
+        return { hasUpdate: false, ref: '', refType: 'commit' };
+      }
+      // Has history but no running deployment - trigger deploy
       return { hasUpdate: true, ref: latestCommit.sha, refType: 'commit' };
     }
 
