@@ -21,6 +21,12 @@ export interface Repository {
   enabled: boolean;
   added_by: number | null;
   deployment_env_vars: Record<string, string>;
+  service_name: string;
+  container_port: number;
+  tunnel_port: number | null;
+  tunnel_subdomain: string | null;
+  localtonet_tunnel_id: string | null;
+  tunnel_url: string | null;
   created_at: string;
   last_deployed_ref?: string;
   last_deployed_ref_type?: string;

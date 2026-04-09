@@ -2,7 +2,6 @@ import { query } from '../db/client.js';
 import { logSystem, logError } from '../logger/index.js';
 import { deploy, acquireDeployLock, releaseDeployLock, rollbackingRepos } from './deployer.js';
 import { stopContainer } from './deployer.js';
-import { stopTunnel } from './localtonet.js';
 import type { Repository, Deployment } from '../types.js';
 
 export async function rollbackRepo(repo: Repository): Promise<Deployment | null> {
@@ -45,16 +44,6 @@ export async function rollbackRepo(repo: Repository): Promise<Deployment | null>
   if (failedDeploymentResult.rows.length > 0) {
     const failedDeployment = failedDeploymentResult.rows[0];
     
-    // Stop the tunnel for failed deployment — pass correct args now
-    const authToken = process.env.LOCALTONET_AUTH_TOKEN || '';
-    if (failedDeployment.localtonet_tunnel_id) {
-      try {
-        await stopTunnel(failedDeployment.localtonet_tunnel_id, authToken);
-      } catch (err) {
-        console.error(`Failed to stop tunnel ${failedDeployment.localtonet_tunnel_id}:`, err);
-      }
-    }
-
     // Stop container if exists
     if (failedDeployment.container_id) {
       try {

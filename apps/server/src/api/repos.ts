@@ -21,6 +21,8 @@ const updateRepoSchema = z.object({
   enabled: z.boolean().optional(),
   deployment_env_vars: z.record(z.string(), z.string()).optional(),
   service_name: z.string().min(1).max(63).regex(/^[a-z0-9][a-z0-9_-]*$/, 'Service name must be lowercase alphanumeric, dashes, or underscores').optional(),
+  container_port: z.number().int().min(1).max(65535).optional(),
+  tunnel_subdomain: z.string().optional().nullable(),
 });
 
 export async function listRepos(req: Request, user: User): Promise<Response> {
@@ -29,7 +31,7 @@ export async function listRepos(req: Request, user: User): Promise<Response> {
            d.ref as last_deployed_ref,
            d.ref_type as last_deployed_ref_type,
            d.status as last_deployment_status,
-           d.tunnel_url as last_tunnel_url
+           COALESCE(r.tunnel_url, d.tunnel_url) as last_tunnel_url
     FROM repositories r
     LEFT JOIN LATERAL (
       SELECT ref, ref_type, status, tunnel_url
@@ -152,6 +154,14 @@ export async function updateRepo(req: Request, user: User, repoId: number): Prom
     updates.push(`service_name = $${paramIndex++}`);
     values.push(parsed.data.service_name);
   }
+  if (parsed.data.container_port !== undefined) {
+    updates.push(`container_port = $${paramIndex++}`);
+    values.push(parsed.data.container_port);
+  }
+  if (parsed.data.tunnel_subdomain !== undefined) {
+    updates.push(`tunnel_subdomain = $${paramIndex++}`);
+    values.push(parsed.data.tunnel_subdomain);
+  }
 
   if (updates.length === 0) {
     return Response.json({ error: 'No updates provided' }, { status: 400 });
@@ -182,14 +192,31 @@ export async function deleteRepo(req: Request, user: User, repoId: number): Prom
   }
 
   try {
-    const result = await query(
-      'DELETE FROM repositories WHERE id = $1 RETURNING id',
-      [repoId]
-    );
-
-    if (result.rowCount === 0) {
+    const repoResult = await query<Repository>('SELECT * FROM repositories WHERE id = $1', [repoId]);
+    if (repoResult.rows.length === 0) {
       return Response.json({ error: 'Repository not found' }, { status: 404 });
     }
+    const repo = repoResult.rows[0];
+
+    // Stop any running container
+    const running = await query<{ container_id: string }>(
+      `SELECT container_id FROM deployments WHERE repo_id = $1 AND status = 'running' AND container_id IS NOT NULL LIMIT 1`,
+      [repoId]
+    );
+    if (running.rows[0]?.container_id) {
+      const { stopContainer } = await import('../daemon/deployer.js');
+      await stopContainer(running.rows[0].container_id).catch(() => {});
+    }
+
+    // Delete the persistent Localtonet tunnel
+    const apiKey = process.env.LOCALTONET_AUTH_TOKEN || '';
+    if (repo.localtonet_tunnel_id && apiKey) {
+      const { deleteTunnel } = await import('../daemon/localtonet.js');
+      await deleteTunnel(repo.localtonet_tunnel_id, apiKey).catch(() => {});
+    }
+
+    // DB cascade handles deployments, logs, permissions
+    await query('DELETE FROM repositories WHERE id = $1', [repoId]);
 
     return Response.json({ success: true });
   } catch (error) {

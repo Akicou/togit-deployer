@@ -25,6 +25,16 @@ export interface Repository {
   deployment_env_vars: Record<string, string> | string;
   /** Logical service name for monorepo support. Defaults to 'app'. */
   service_name: string;
+  /** Port the app listens on inside the container. Default 3000. */
+  container_port: number;
+  /** Fixed host port assigned to this repo for tunnel routing. */
+  tunnel_port: number | null;
+  /** Optional custom subdomain (e.g. "myapp" → myapp.localto.net). */
+  tunnel_subdomain: string | null;
+  /** Persistent Localtonet tunnel ID, reused across redeployments. */
+  localtonet_tunnel_id: string | null;
+  /** Permanent public tunnel URL for this repo+service. */
+  tunnel_url: string | null;
   created_at: Date;
 }
 

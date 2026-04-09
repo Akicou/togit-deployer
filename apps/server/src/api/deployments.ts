@@ -1,5 +1,5 @@
 import { query } from '../db/client.js';
-import type { Deployment, User } from '../types.js';
+import type { Deployment, Repository, User } from '../types.js';
 
 export async function getDeployment(req: Request, deploymentId: number): Promise<Response> {
   const result = await query<Deployment & { repo_name: string; repo_full_name: string; triggered_by_login: string | null }>(
@@ -69,7 +69,7 @@ export async function deleteDeployment(req: Request, deploymentId: number, user:
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const result = await query<Deployment & { localtonet_tunnel_id: string | null }>(
+  const result = await query<Deployment>(
     'SELECT * FROM deployments WHERE id = $1',
     [deploymentId]
   );
@@ -79,28 +79,29 @@ export async function deleteDeployment(req: Request, deploymentId: number, user:
   }
 
   const deployment = result.rows[0];
+  const { stopContainer } = await import('../daemon/deployer.js');
 
-  // Stop Docker container
+  if (deployment.status === 'running') {
+    // Stop the container
+    if (deployment.container_id) {
+      await stopContainer(deployment.container_id).catch((e) => console.error('Error stopping container:', e));
+    }
+    // Mark as rolled_back so rollbackRepo finds the correct previous deployment
+    await query(`UPDATE deployments SET status = 'rolled_back', finished_at = NOW() WHERE id = $1`, [deploymentId]);
+    // Trigger async rollback — redeploys previous ref (tunnel stays alive, it belongs to the repo)
+    const repoResult = await query<Repository>('SELECT * FROM repositories WHERE id = $1', [deployment.repo_id]);
+    if (repoResult.rows.length > 0) {
+      const { rollbackRepo } = await import('../daemon/rollback.js');
+      rollbackRepo(repoResult.rows[0]).catch((e) => console.error('Rollback error:', e));
+    }
+    return Response.json({ success: true, message: 'Rolling back to previous deployment' });
+  }
+
+  // Non-running deployment: stop container if any, delete record
   if (deployment.container_id) {
-    try {
-      const { stopContainer } = await import('../daemon/deployer.js');
-      await stopContainer(deployment.container_id);
-    } catch (error) {
-      console.error('Error stopping container:', error);
-    }
+    await stopContainer(deployment.container_id).catch(() => {});
   }
-
-  // Delete Localtonet tunnel
-  const authToken = process.env.LOCALTONET_AUTH_TOKEN || '';
-  if (deployment.localtonet_tunnel_id && authToken) {
-    try {
-      const { stopTunnel } = await import('../daemon/localtonet.js');
-      await stopTunnel(deployment.localtonet_tunnel_id, authToken);
-    } catch (error) {
-      console.error('Error stopping tunnel:', error);
-    }
-  }
-
+  // Tunnel is NOT touched — it belongs to the repo, not the deployment
   await query('DELETE FROM deployments WHERE id = $1', [deploymentId]);
 
   return Response.json({ success: true });

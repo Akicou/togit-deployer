@@ -15,9 +15,6 @@ export default function DeploymentDetail({ user }: { user: any }) {
   const [logs, setLogs] = useState<Log[]>([]);
   const [logsLoading, setLogsLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
-  const [stoppingTunnel, setStoppingTunnel] = useState(false);
-  const [tunnelActive, setTunnelActive] = useState<boolean | null>(null);
-  const [checkingTunnel, setCheckingTunnel] = useState(false);
 
   const { logs: liveLogs, connected } = useWebSocket(parseInt(id || '0', 10));
 
@@ -25,18 +22,8 @@ export default function DeploymentDetail({ user }: { user: any }) {
     if (id) {
       loadDeployment();
       loadLogs();
-      checkTunnelStatus();
-      
-      // Auto-refresh tunnel status every 30s if deployment is running
-      const interval = setInterval(() => {
-        if (deployment?.status === 'running' && deployment?.localtonet_tunnel_id) {
-          checkTunnelStatus();
-        }
-      }, 30000);
-      
-      return () => clearInterval(interval);
     }
-  }, [id, deployment?.status, deployment?.localtonet_tunnel_id]);
+  }, [id]);
 
   useEffect(() => {
     if (liveLogs.length > 0) {
@@ -59,7 +46,12 @@ export default function DeploymentDetail({ user }: { user: any }) {
   }
 
   async function handleDelete() {
-    if (!deployment || !confirm('Delete this deployment? This will stop the container and tunnel.')) return;
+    if (!deployment) return;
+    const isRunning = deployment.status === 'running';
+    const msg = isRunning
+      ? 'Roll back this deployment? The previous version will be redeployed.'
+      : 'Delete this deployment record?';
+    if (!confirm(msg)) return;
     setDeleting(true);
     try {
       const response = await api.delete(`/api/deployments/${id}`);
@@ -70,44 +62,6 @@ export default function DeploymentDetail({ user }: { user: any }) {
       console.error('Failed to delete deployment:', error);
     } finally {
       setDeleting(false);
-    }
-  }
-
-  async function checkTunnelStatus() {
-    if (!deployment?.localtonet_tunnel_id) return;
-    
-    setCheckingTunnel(true);
-    try {
-      const response = await api.get(`/api/tunnels/${deployment.localtonet_tunnel_id}/status`);
-      if (response.ok) {
-        const data = await response.json();
-        setTunnelActive(data.isActive);
-      }
-    } catch (error) {
-      console.error('Failed to check tunnel status:', error);
-      setTunnelActive(null);
-    } finally {
-      setCheckingTunnel(false);
-    }
-  }
-
-  async function handleStopTunnel() {
-    if (!deployment?.localtonet_tunnel_id || !confirm('Stop this tunnel? This will mark the deployment as rolled back.')) return;
-    setStoppingTunnel(true);
-    try {
-      const response = await api.post(`/api/tunnels/${id}/stop`);
-      if (response.ok) {
-        setTunnelActive(false);
-        loadDeployment();
-      } else {
-        const data = await response.json();
-        alert(`Failed to stop tunnel: ${data.error}`);
-      }
-    } catch (error) {
-      console.error('Failed to stop tunnel:', error);
-      alert('Failed to stop tunnel');
-    } finally {
-      setStoppingTunnel(false);
     }
   }
 
@@ -216,7 +170,9 @@ export default function DeploymentDetail({ user }: { user: any }) {
                 }
               }}
             >
-              {deleting ? 'Deleting...' : 'Delete'}
+              {deleting
+                ? (deployment.status === 'running' ? 'Rolling Back...' : 'Deleting...')
+                : (deployment.status === 'running' ? 'Roll Back' : 'Delete')}
             </button>
           )}
         </div>
@@ -284,59 +240,9 @@ export default function DeploymentDetail({ user }: { user: any }) {
                 </div>
               )}
               {deployment.localtonet_tunnel_id && (
-                <>
-                  <div style={{ fontSize: 11, color: '#666', fontWeight: 600, marginBottom: 4 }}>
-                    Tunnel ID: <span style={{ fontFamily: 'monospace', color: '#1a1a1a' }}>{deployment.localtonet_tunnel_id}</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <span style={{
-                      padding: '2px 8px',
-                      border: '2px solid #1a1a1a',
-                      background: tunnelActive === true ? '#00aa00' : tunnelActive === false ? '#cc0000' : '#888',
-                      color: '#ffffff',
-                      fontSize: 9,
-                      fontWeight: 800,
-                      textTransform: 'uppercase',
-                    }}>
-                      {checkingTunnel ? 'Checking...' : tunnelActive === true ? '● Active' : tunnelActive === false ? '● Stopped' : '● Unknown'}
-                    </span>
-                    <button
-                      onClick={checkTunnelStatus}
-                      disabled={checkingTunnel}
-                      style={{
-                        padding: '2px 6px',
-                        border: '1px solid #1a1a1a',
-                        background: '#ffffff',
-                        color: '#1a1a1a',
-                        fontWeight: 700,
-                        cursor: checkingTunnel ? 'not-allowed' : 'pointer',
-                        fontSize: 9,
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      {checkingTunnel ? '...' : 'Refresh'}
-                    </button>
-                  </div>
-                </>
-              )}
-              {(user.role === 'admin' || user.role === 'deployer') && (
-                <button
-                  onClick={handleStopTunnel}
-                  disabled={stoppingTunnel || !tunnelActive}
-                  style={{
-                    padding: '6px 12px',
-                    border: '2px solid #cc0000',
-                    background: !tunnelActive || stoppingTunnel ? '#f5f5f5' : '#cc0000',
-                    color: !tunnelActive || stoppingTunnel ? '#666' : '#ffffff',
-                    fontWeight: 800,
-                    cursor: (!tunnelActive || stoppingTunnel) ? 'not-allowed' : 'pointer',
-                    fontSize: 10,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                  }}
-                >
-                  {stoppingTunnel ? 'Stopping...' : 'Stop Tunnel'}
-                </button>
+                <div style={{ fontSize: 11, color: '#666', fontWeight: 600, marginBottom: 4 }}>
+                  Tunnel ID: <span style={{ fontFamily: 'monospace', color: '#1a1a1a' }}>{deployment.localtonet_tunnel_id}</span>
+                </div>
               )}
             </div>
           )}

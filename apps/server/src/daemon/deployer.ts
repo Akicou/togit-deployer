@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { query } from '../db/client.js';
 import { logBuild, logDocker, logSystem, logError } from '../logger/index.js';
-import { startTunnel, stopTunnel } from './localtonet.js';
+import { createTunnel, startTunnel } from './localtonet.js';
 import { rollbackRepo } from './rollback.js';
 import { decryptAccessToken } from '../github/oauth.js';
 import type { Repository, Deployment, User } from '../types.js';
@@ -247,6 +247,19 @@ function spawnCommand(
   });
 }
 
+/**
+ * Assign a fixed host port to the repo for Docker port mapping.
+ * Ports are allocated from 10000 upward. Returns the existing port if already set.
+ */
+async function assignTunnelPort(repoId: number, existing: number | null): Promise<number> {
+  if (existing !== null) return existing;
+  const { rows } = await query<{ max: number }>(`SELECT COALESCE(MAX(tunnel_port), 9999) AS max FROM repositories`);
+  const port = rows[0].max + 1;
+  await query(`UPDATE repositories SET tunnel_port = $1 WHERE id = $2 AND tunnel_port IS NULL`, [port, repoId]);
+  const { rows: fresh } = await query<{ tunnel_port: number }>(`SELECT tunnel_port FROM repositories WHERE id = $1`, [repoId]);
+  return fresh[0].tunnel_port;
+}
+
 export async function checkDockerRunning(): Promise<boolean> {
   try {
     await docker.ping();
@@ -261,13 +274,10 @@ export async function checkDockerRunning(): Promise<boolean> {
  * exposed port accepts a TCP connection.
  */
 async function waitForHealthy(
-  containerInfo: any,
+  hostPort: number,
   maxAttempts = 30,
   intervalMs = 1000
 ): Promise<boolean> {
-  const hostPort = getExposedPort(containerInfo);
-  if (!hostPort) return false;
-
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       await new Promise<void>((resolve, reject) => {
@@ -328,6 +338,10 @@ export async function deploy(
   const imageName = `togit-${repo.id}-${serviceName}-${sanitizedRef}`;
   const containerName = `togit-${repo.id}-${serviceName}`;
 
+  // Re-fetch repo to get latest tunnel config (container_port, tunnel_port, localtonet_tunnel_id)
+  const freshRepoResult = await query<Repository>('SELECT * FROM repositories WHERE id = $1', [repo.id]);
+  const freshRepo = freshRepoResult.rows[0] || repo;
+
   try {
     await query('UPDATE deployments SET status = $1 WHERE id = $2', ['building', deployment.id]);
     deployment.status = 'building';
@@ -361,43 +375,59 @@ export async function deploy(
     await logBuild(`Building Docker image: ${imageName}`, { deployment_id: deployment.id, repo_id: repo.id });
     await buildImage(targetDir, imageName, deployment.id, repo.id);
 
+    // Assign fixed host port for this repo (auto-assigns from 10000 if not set)
+    const tunnelPort = await assignTunnelPort(freshRepo.id, freshRepo.tunnel_port ?? null);
+    const containerPort = freshRepo.container_port || 3000;
+
+    // Inject PORT env var so apps using process.env.PORT auto-configure
+    const envWithPort: Record<string, string> = { PORT: String(containerPort), ...mergedEnvVars };
+
     // Stop existing container for this repo
     await stopExistingContainer(containerName);
 
-    // Run container with merged env vars
-    await logDocker(`Starting container: ${containerName}`, { deployment_id: deployment.id, repo_id: repo.id });
-    const container = await runContainer(imageName, containerName, mergedEnvVars);
+    // Run container with fixed port mapping
+    await logDocker(`Starting container: ${containerName} (-p ${tunnelPort}:${containerPort})`, { deployment_id: deployment.id, repo_id: repo.id });
+    const container = await runContainer(imageName, containerName, envWithPort, tunnelPort, containerPort);
 
-    // Inspect container to discover exposed port
-    const containerInfo = await docker.getContainer(container.id).inspect() as any;
-    const hostPort = getExposedPort(containerInfo);
-
-    if (!hostPort) {
-      throw new Error('Could not determine container exposed port');
-    }
-
-    // Wait for the container to become healthy (accept connections)
-    await logDocker(`Waiting for container to become healthy...`, { deployment_id: deployment.id });
-    const isHealthy = await waitForHealthy(containerInfo);
+    // Wait for the container to become healthy on the fixed host port
+    await logDocker(`Waiting for container to become healthy on port ${tunnelPort}...`, { deployment_id: deployment.id });
+    const isHealthy = await waitForHealthy(tunnelPort);
     if (!isHealthy) {
       throw new Error('Container failed to become healthy within timeout');
     }
+    await logDocker(`Container started and healthy on host port ${tunnelPort}`, { deployment_id: deployment.id, repo_id: repo.id });
 
-    await logDocker(`Container started and healthy on host port ${hostPort}`, { deployment_id: deployment.id, repo_id: repo.id });
-
-    // Start Localtonet tunnel
+    // Tunnel: reuse existing or create new
     const authToken = process.env.LOCALTONET_AUTH_TOKEN || '';
     if (!authToken) {
       throw new Error('LOCALTONET_AUTH_TOKEN is not configured');
     }
 
-    const { tunnelId, tunnelUrl } = await startTunnel(deployment.id, hostPort, authToken);
+    let tunnelId = freshRepo.localtonet_tunnel_id;
+    let tunnelUrl = freshRepo.tunnel_url;
+
+    if (!tunnelId) {
+      // First deploy: create the tunnel
+      const t = await createTunnel(deployment.id, tunnelPort, authToken, {
+        subDomain: freshRepo.tunnel_subdomain || undefined,
+      });
+      tunnelId = t.tunnelId;
+      tunnelUrl = t.tunnelUrl;
+      await query(
+        `UPDATE repositories SET localtonet_tunnel_id = $1, tunnel_url = $2, tunnel_port = $3 WHERE id = $4`,
+        [tunnelId, tunnelUrl, tunnelPort, freshRepo.id]
+      );
+    }
+
+    // Always start the tunnel (ensures it's routing, even if it was stopped)
+    await startTunnel(tunnelId, authToken);
+    logSystem(`Tunnel started: ${tunnelUrl}`, { deployment_id: deployment.id, repo_id: repo.id });
 
     await query(
       `UPDATE deployments
        SET status = 'running', container_id = $1, tunnel_url = $2, tunnel_port = $3, localtonet_tunnel_id = $4, finished_at = NOW()
        WHERE id = $5`,
-      [container.id, tunnelUrl, hostPort, tunnelId, deployment.id]
+      [container.id, tunnelUrl, tunnelPort, tunnelId, deployment.id]
     );
 
     logSystem(`Deployment ${deployment.id} completed successfully: ${tunnelUrl}`, {
@@ -411,7 +441,7 @@ export async function deploy(
     // Clean up old images while we're at it
     cleanupOldImages().catch(() => {}); // fire-and-forget
 
-    return { ...deployment, status: 'running', container_id: container.id, tunnel_url: tunnelUrl, tunnel_port: hostPort };
+    return { ...deployment, status: 'running', container_id: container.id, tunnel_url: tunnelUrl, tunnel_port: tunnelPort };
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -496,14 +526,16 @@ async function stopExistingContainer(containerName: string): Promise<void> {
 async function runContainer(
   imageName: string,
   containerName: string,
-  envVars: Record<string, string>
+  envVars: Record<string, string>,
+  tunnelPort: number,
+  containerPort: number
 ): Promise<{ id: string }> {
   const envArgs = Object.entries(envVars).flatMap(([k, v]) => ['-e', `${k}=${v}`]);
   const args = [
     'run', '-d',
     '--name', containerName,
     ...envArgs,
-    '-P',
+    '-p', `${tunnelPort}:${containerPort}`,
     '--restart', 'unless-stopped',
     imageName,
   ];
@@ -512,25 +544,6 @@ async function runContainer(
   return { id };
 }
 
-function getExposedPort(containerInfo: any): number | null {
-  const ports = containerInfo?.NetworkSettings?.Ports || {};
-  const commonPorts = ['3000', '80', '5000', '8000', '8080'];
-
-  for (const port of commonPorts) {
-    const portKey = `${port}/tcp`;
-    if (ports[portKey]?.length > 0) {
-      return parseInt(ports[portKey][0].HostPort, 10);
-    }
-  }
-
-  for (const [, binding] of Object.entries(ports)) {
-    if (binding && Array.isArray(binding) && binding.length > 0) {
-      return parseInt((binding as any)[0].HostPort, 10);
-    }
-  }
-
-  return null;
-}
 
 export async function stopContainer(containerId: string): Promise<void> {
   const noop = () => {};

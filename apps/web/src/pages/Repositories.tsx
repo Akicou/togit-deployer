@@ -260,6 +260,8 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
     deploy_mode: repo.deploy_mode,
     watch_branch: repo.watch_branch ?? 'main',
     enabled: repo.enabled,
+    container_port: repo.container_port ?? 3000,
+    tunnel_subdomain: repo.tunnel_subdomain ?? '',
   });
   const [envVars, setEnvVars] = useState<Record<string, string>>(repo.deployment_env_vars || {});
   const [newKey, setNewKey] = useState('');
@@ -293,7 +295,11 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
   async function handleSave() {
     setSaving(true);
     try {
-      const response = await api.patch(`/api/repos/${repo.id}`, { ...config, deployment_env_vars: envVars });
+      const response = await api.patch(`/api/repos/${repo.id}`, {
+        ...config,
+        deployment_env_vars: envVars,
+        tunnel_subdomain: config.tunnel_subdomain || null,
+      });
       if (response.ok) {
         toast('Changes saved', 'success');
         onRefresh();
@@ -364,9 +370,9 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
             </h1>
             <div style={{ display: 'flex', gap: 8 }}>
               <DeployBadge status={repo.last_deployment_status || 'never'} />
-              {repo.last_tunnel_url && (
+              {(repo.tunnel_url || repo.last_tunnel_url) && (
                 <a
-                  href={repo.last_tunnel_url}
+                  href={(repo.tunnel_url || repo.last_tunnel_url)!}
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{
@@ -390,7 +396,7 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
                     <polyline points="15 3 21 3 21 9" />
                     <line x1="10" y1="14" x2="21" y2="3" />
                   </svg>
-                  {repo.last_tunnel_url}
+                  {repo.tunnel_url || repo.last_tunnel_url}
                 </a>
               )}
             </div>
@@ -553,7 +559,7 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
             />
           </div>
 
-          <div style={{ marginBottom: 28 }}>
+          <div style={{ marginBottom: 20 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
               <input
                 type="checkbox"
@@ -563,6 +569,42 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
               />
               <span style={{ color: '#1a1a1a', fontWeight: 700, fontSize: 14 }}>Auto-deploy enabled</span>
             </label>
+          </div>
+
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Container Port
+            </label>
+            <input
+              type="number"
+              value={config.container_port}
+              onChange={(e) => setConfig({ ...config, container_port: parseInt(e.target.value, 10) || 3000 })}
+              style={{
+                width: '100%', padding: '12px 14px', border: '2px solid #1a1a1a',
+                background: '#f5f5f5', color: '#1a1a1a', fontSize: 14, fontWeight: 600, outline: 'none',
+              }}
+              placeholder="3000"
+              min="1"
+              max="65535"
+            />
+            <p style={{ color: '#999', fontSize: 11, marginTop: 4, fontWeight: 600 }}>Port your app listens on inside the container</p>
+          </div>
+
+          <div style={{ marginBottom: 28 }}>
+            <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Tunnel Subdomain (optional)
+            </label>
+            <input
+              type="text"
+              value={config.tunnel_subdomain}
+              onChange={(e) => setConfig({ ...config, tunnel_subdomain: e.target.value })}
+              style={{
+                width: '100%', padding: '12px 14px', border: '2px solid #1a1a1a',
+                background: '#f5f5f5', color: '#1a1a1a', fontSize: 14, fontWeight: 600, outline: 'none',
+              }}
+              placeholder="myapp"
+            />
+            <p style={{ color: '#999', fontSize: 11, marginTop: 4, fontWeight: 600 }}>e.g. "myapp" → myapp.localto.net (set before first deploy)</p>
           </div>
 
           {/* Environment Variables */}
