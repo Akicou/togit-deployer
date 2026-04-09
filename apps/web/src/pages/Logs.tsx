@@ -179,8 +179,8 @@ export default function Logs() {
             <div style={{
               padding: '10px 14px',
               border: '2px solid #1a1a1a',
-              background: connected ? '#1a1a1a' : '#ffffff',
-              color: connected ? '#ffffff' : '#666',
+              background: connected ? '#1a1a1a' : '#f5f5f5',
+              color: connected ? '#ffffff' : '#888',
               fontSize: 11,
               fontWeight: 800,
               textTransform: 'uppercase',
@@ -192,9 +192,11 @@ export default function Logs() {
               <span style={{
                 width: 8,
                 height: 8,
-                background: connected ? '#ffffff' : '#666',
+                borderRadius: '50%',
+                background: connected ? '#4ade80' : '#ccc',
+                boxShadow: connected ? '0 0 8px #4ade80' : 'none',
               }} />
-              {connected ? 'LIVE' : 'OFFLINE'}
+              {connected ? 'LIVE UPDATES' : 'HISTORICAL LOGS'}
             </div>
           </div>
         </div>
