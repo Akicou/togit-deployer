@@ -18,12 +18,12 @@ export async function generateAndStoreOAuthState(): Promise<string> {
 }
 
 export async function validateAndConsumeOAuthState(state: string): Promise<boolean> {
-  const result = await query<{ id: number }>(
-    `DELETE FROM oauth_states WHERE state = $1 AND expires_at > NOW() RETURNING id`,
+  const result = await query(
+    `DELETE FROM oauth_states WHERE state = $1 AND expires_at > NOW()`,
     [state]
   );
 
-  return result.rows.length > 0;
+  return (result.rowCount ?? 0) > 0;
 }
 
 export async function cleanupExpiredOAuthStates(): Promise<number> {
