@@ -273,6 +273,7 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
   const [deploying, setDeploying] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [resettingTunnel, setResettingTunnel] = useState(false);
+  const [showRawEditor, setShowRawEditor] = useState(false);
 
   async function handleDeployConfirm() {
     if (!showDeployModal) return;
@@ -734,9 +735,27 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
 
           {/* Environment Variables */}
           <div style={{ marginBottom: 24 }}>
-            <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Environment Variables
-            </label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <label style={{ color: '#666', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Environment Variables
+              </label>
+              <button
+                onClick={() => setShowRawEditor(true)}
+                style={{
+                  padding: '6px 12px',
+                  border: '2px solid #1a1a1a',
+                  background: '#ffffff',
+                  color: '#1a1a1a',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                }}
+              >
+                Raw Editor
+              </button>
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
               {Object.entries(envVars).map(([key, value]) => (
                 <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -909,6 +928,18 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
           deploying={deploying}
         />
       )}
+      <AnimatePresence>
+        {showRawEditor && (
+          <RawEditorModal
+            envVars={envVars}
+            onClose={() => setShowRawEditor(false)}
+            onUpdate={(newVars) => {
+              setEnvVars(newVars);
+              setShowRawEditor(false);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1236,6 +1267,294 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
   );
 }
 
+function RawEditorModal({
+  envVars,
+  onClose,
+  onUpdate,
+}: {
+  envVars: Record<string, string>;
+  onClose: () => void;
+  onUpdate: (vars: Record<string, string>) => void;
+}) {
+  const [mode, setMode] = useState<'env' | 'json'>('env');
+  const [rawText, setRawText] = useState('');
+  const [error, setError] = useState('');
+  const toast = useToast();
+
+  // Initialize rawText based on current mode
+  useState(() => {
+    updateRawText(mode);
+  });
+
+  function updateRawText(newMode: 'env' | 'json') {
+    if (newMode === 'env') {
+      const envText = Object.entries(envVars)
+        .map(([key, value]) => {
+          // Quote value if it contains spaces or special chars
+          const needsQuotes = /[\s#"']/.test(value);
+          return needsQuotes ? `${key}="${value}"` : `${key}=${value}`;
+        })
+        .join('\n');
+      setRawText(envText);
+    } else {
+      setRawText(JSON.stringify(envVars, null, 2));
+    }
+  }
+
+  function handleModeChange(newMode: 'env' | 'json') {
+    setMode(newMode);
+    updateRawText(newMode);
+    setError('');
+  }
+
+  function parseEnvFormat(text: string): Record<string, string> {
+    const result: Record<string, string> = {};
+    const lines = text.split('\n');
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+
+      const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+      if (!match) {
+        throw new Error(`Invalid ENV format at line: ${line}`);
+      }
+
+      const key = match[1];
+      let value = match[2];
+
+      // Remove quotes if present
+      if ((value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+
+      result[key] = value;
+    }
+
+    return result;
+  }
+
+  function handleUpdate() {
+    setError('');
+    try {
+      let parsed: Record<string, string>;
+
+      if (mode === 'env') {
+        parsed = parseEnvFormat(rawText);
+      } else {
+        parsed = JSON.parse(rawText);
+        // Validate it's a flat object with string values
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+          throw new Error('JSON must be an object');
+        }
+        for (const [key, value] of Object.entries(parsed)) {
+          if (typeof value !== 'string') {
+            throw new Error(`Value for "${key}" must be a string`);
+          }
+        }
+      }
+
+      onUpdate(parsed);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid format');
+    }
+  }
+
+  function handleCopy() {
+    navigator.clipboard.writeText(rawText);
+    toast(`Copied ${mode.toUpperCase()} to clipboard`, 'success');
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0, 0, 0, 0.6)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+      }}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#ffffff',
+          border: '4px solid #1a1a1a',
+          padding: 32,
+          width: 700,
+          maxWidth: '90%',
+          maxHeight: '85vh',
+          overflow: 'auto',
+          boxShadow: '8px 8px 0 #1a1a1a',
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 800, color: '#1a1a1a', textTransform: 'uppercase' }}>
+            Raw Editor
+          </h2>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: '2px solid #1a1a1a',
+              color: '#1a1a1a',
+              cursor: 'pointer',
+              fontWeight: 800,
+              fontSize: 20,
+              width: 32,
+              height: 32,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <button
+            onClick={() => handleModeChange('env')}
+            style={{
+              padding: '10px 20px',
+              border: '2px solid #1a1a1a',
+              background: mode === 'env' ? '#1a1a1a' : '#ffffff',
+              color: mode === 'env' ? '#ffffff' : '#1a1a1a',
+              fontWeight: 800,
+              cursor: 'pointer',
+              fontSize: 12,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}
+          >
+            ENV
+          </button>
+          <button
+            onClick={() => handleModeChange('json')}
+            style={{
+              padding: '10px 20px',
+              border: '2px solid #1a1a1a',
+              background: mode === 'json' ? '#1a1a1a' : '#ffffff',
+              color: mode === 'json' ? '#ffffff' : '#1a1a1a',
+              fontWeight: 800,
+              cursor: 'pointer',
+              fontSize: 12,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}
+          >
+            JSON
+          </button>
+        </div>
+
+        {/* Textarea */}
+        <textarea
+          value={rawText}
+          onChange={(e) => setRawText(e.target.value)}
+          spellCheck={false}
+          style={{
+            width: '100%',
+            height: 400,
+            padding: 16,
+            border: '2px solid #1a1a1a',
+            background: '#f5f5f5',
+            color: '#1a1a1a',
+            fontSize: 13,
+            fontWeight: 600,
+            fontFamily: 'JetBrains Mono, monospace',
+            outline: 'none',
+            resize: 'vertical',
+            marginBottom: 12,
+          }}
+          placeholder={mode === 'env' ? 'KEY=value\nANOTHER_KEY="value with spaces"' : '{\n  "KEY": "value",\n  "ANOTHER_KEY": "value"\n}'}
+        />
+
+        {/* Error */}
+        {error && (
+          <div style={{
+            padding: 12,
+            border: '2px solid #ff0000',
+            background: '#fff5f5',
+            color: '#ff0000',
+            fontWeight: 700,
+            fontSize: 12,
+            marginBottom: 16,
+          }}>
+            {error}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button
+            onClick={handleCopy}
+            style={{
+              padding: '12px 20px',
+              border: '2px solid #1a1a1a',
+              background: '#ffffff',
+              color: '#1a1a1a',
+              fontWeight: 800,
+              cursor: 'pointer',
+              fontSize: 12,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}
+          >
+            Copy {mode.toUpperCase()}
+          </button>
+          <button
+            onClick={onClose}
+            style={{
+              flex: 1,
+              padding: '12px',
+              border: '2px solid #1a1a1a',
+              background: '#ffffff',
+              color: '#1a1a1a',
+              fontWeight: 800,
+              cursor: 'pointer',
+              fontSize: 12,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleUpdate}
+            style={{
+              flex: 1,
+              padding: '12px',
+              border: '2px solid #1a1a1a',
+              background: '#1a1a1a',
+              color: '#ffffff',
+              fontWeight: 800,
+              cursor: 'pointer',
+              fontSize: 12,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              boxShadow: '3px 3px 0 #1a1a1a',
+            }}
+          >
+            Update Variables
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 function DeployModal({
   showDeployModal,
   onClose,
@@ -1257,6 +1576,7 @@ function DeployModal({
 }) {
   const [newKey, setNewKey] = useState('');
   const [newValue, setNewValue] = useState('');
+  const [showRawEditor, setShowRawEditor] = useState(false);
 
   if (!showDeployModal) return null;
 
@@ -1373,7 +1693,25 @@ function DeployModal({
         ) : (
           <>
             <div style={{ marginBottom: 24 }}>
-              <label style={labelStyle}>Environment Variables</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <label style={labelStyle}>Environment Variables</label>
+                <button
+                  onClick={() => setShowRawEditor(true)}
+                  style={{
+                    padding: '6px 12px',
+                    border: '2px solid #1a1a1a',
+                    background: '#ffffff',
+                    color: '#1a1a1a',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    fontSize: 11,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                  }}
+                >
+                  Raw Editor
+                </button>
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
                 {Object.entries(envVars).map(([key, value]) => (
                   <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -1487,6 +1825,19 @@ function DeployModal({
             </div>
           </>
         )}
+
+        <AnimatePresence>
+          {showRawEditor && (
+            <RawEditorModal
+              envVars={envVars}
+              onClose={() => setShowRawEditor(false)}
+              onUpdate={(newVars) => {
+                setEnvVars(newVars);
+                setShowRawEditor(false);
+              }}
+            />
+          )}
+        </AnimatePresence>
       </motion.div>
     </motion.div>
   );
