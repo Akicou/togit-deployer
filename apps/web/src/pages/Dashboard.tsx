@@ -51,9 +51,9 @@ export default function Dashboard({ user }: DashboardProps) {
 
   const statCards = [
     { label: 'Total Repos', value: stats?.total_repos ?? 0, link: '/repositories' },
-    { label: 'Active Deployments', value: stats?.active_deployments ?? 0, link: '/deployments' },
+    { label: 'Active Deployments', value: stats?.active_deployments ?? 0 },
     { label: 'Failed Today', value: stats?.failed_today ?? 0 },
-    { label: 'Tunnels Online', value: stats?.tunnels_online ?? 0, link: '/tunnels' },
+    { label: 'Tunnels Online', value: stats?.tunnels_online ?? 0 },
   ];
 
   return (

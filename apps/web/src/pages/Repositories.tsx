@@ -1099,28 +1099,43 @@ function DeployModal({
           </button>
         </div>
 
-        {envExample && (
-          <div style={{
-            padding: 12,
-            border: '2px dashed #1a1a1a',
-            background: '#f0fff4',
-            marginBottom: 20,
-          }}>
-            <p style={{ color: '#1a1a1a', fontWeight: 700, fontSize: 12, marginBottom: 4 }}>
-              ✅ Loaded from .env.example
-            </p>
-            <p style={{ color: '#666', fontWeight: 600, fontSize: 11 }}>
-              Edit values below or add new variables
-            </p>
-          </div>
-        )}
-
         {loadingEnv ? (
           <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
             Loading environment variables...
           </div>
         ) : (
           <>
+            {envExample && (
+              <div style={{
+                padding: 12,
+                border: '2px dashed #1a1a1a',
+                background: '#f0fff4',
+                marginBottom: 20,
+              }}>
+                <p style={{ color: '#1a1a1a', fontWeight: 700, fontSize: 12, marginBottom: 4 }}>
+                  ✅ Loaded from .env.example
+                </p>
+                <p style={{ color: '#666', fontWeight: 600, fontSize: 11 }}>
+                  Edit values below or add new variables
+                </p>
+              </div>
+            )}
+            {!envExample && Object.keys(envVars).length === 0 && (
+              <div style={{
+                padding: 12,
+                border: '2px dashed #1a1a1a',
+                background: '#f5f5f5',
+                marginBottom: 20,
+                textAlign: 'center',
+              }}>
+                <p style={{ color: '#666', fontWeight: 700, fontSize: 12, marginBottom: 4 }}>
+                  No .env.example found in repository
+                </p>
+                <p style={{ color: '#888', fontWeight: 600, fontSize: 11 }}>
+                  Add custom environment variables below for this deployment
+                </p>
+              </div>
+            )}
             <div style={{ marginBottom: 24 }}>
               <label style={labelStyle}>Environment Variables</label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
@@ -1193,10 +1208,12 @@ function DeployModal({
                 </button>
               </div>
             </div>
+          </>
+        )}
 
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button
-                onClick={onClose}
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button
+            onClick={onClose}
                 style={{
                   flex: 1,
                   padding: '14px',
@@ -1232,8 +1249,7 @@ function DeployModal({
                 Deploy
               </button>
             </div>
-          </>
-        )}
+        </motion.div>
       </motion.div>
     </motion.div>
   );

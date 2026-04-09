@@ -274,16 +274,19 @@ async function buildImage(
   repoId: number
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    // Enable verbose build output with --progress=plain
+    // Optimized build options for faster builds
     docker.buildImage(
       context,
       { 
-        t: imageName, 
-        rm: true,
+        t: imageName,
+        rm: true,              // Remove intermediate containers
         dockerfile: 'Dockerfile',
         buildargs: {},
-        pull: false,
-        nocache: false,
+        pull: false,           // Don't pull base image unless missing
+        nocache: false,        // Use cache
+        cachefrom: [imageName], // Use existing image as cache source
+        platform: 'linux/amd64',
+        shmsize: 536870912,    // 512MB shared memory for faster builds
       },
       (err, stream) => {
         if (err) { 
@@ -299,20 +302,25 @@ async function buildImage(
 
         let buildSuccess = false;
         let buildError: Error | null = null;
+        let startTime = Date.now();
+
+        logBuild(`Starting optimized Docker build for ${imageName}...`, { deployment_id: deploymentId, repo_id: repoId });
 
         docker.modem.followProgress(
           stream,
           (err) => {
+            const duration = ((Date.now() - startTime) / 1000).toFixed(2);
             if (err) {
-              const errorMsg = `Docker build failed: ${err.message}`;
+              const errorMsg = `Docker build failed after ${duration}s: ${err.message}`;
               logError(errorMsg, { deployment_id: deploymentId, repo_id: repoId });
               reject(err);
             } else if (buildSuccess) {
-              logBuild(`Docker build completed successfully: ${imageName}`, { deployment_id: deploymentId, repo_id: repoId });
+              logBuild(`✅ Docker build completed in ${duration}s: ${imageName}`, { deployment_id: deploymentId, repo_id: repoId });
               resolve();
             } else if (buildError) {
               reject(buildError);
             } else {
+              logBuild(`Docker build completed in ${duration}s`, { deployment_id: deploymentId, repo_id: repoId });
               resolve();
             }
           },
@@ -321,7 +329,8 @@ async function buildImage(
             if (event.stream) {
               const lines = event.stream.trim().split('\n');
               for (const line of lines) {
-                if (line) logBuild(line, { deployment_id: deploymentId, repo_id: repoId });
+                if (line && !line.includes('Using cache')) logBuild(line, { deployment_id: deploymentId, repo_id: repoId });
+                else if (line.includes('Using cache')) logBuild('⚡ ' + line, { deployment_id: deploymentId, repo_id: repoId });
               }
             }
             if (event.error) {

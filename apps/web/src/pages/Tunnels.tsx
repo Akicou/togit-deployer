@@ -1,13 +1,40 @@
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { api } from '../lib/api';
-import type { ActiveTunnel } from '../types';
+// Tunnels page removed - tunnel management is now inline per deployment
+// This page kept for backwards compatibility, redirects to deployments
+import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 export default function Tunnels() {
-  const [tunnels, setTunnels] = useState<ActiveTunnel[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [stopping, setStopping] = useState<number | null>(null);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const navigate = useNavigate();
+  
+  useEffect(() => {
+    navigate('/dashboard');
+  }, [navigate]);
+  
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: '100vh',
+      background: '#ffffff',
+    }}>
+      <div style={{
+        textAlign: 'center',
+        padding: 60,
+        color: '#666',
+        fontWeight: 600,
+      }}>
+        <div style={{ marginBottom: 20 }}>
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" strokeWidth="1.5" style={{ margin: '0 auto', opacity: 0.3 }}>
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+          </svg>
+        </div>
+        <h2 style={{ fontSize: 20, fontWeight: 800, color: '#1a1a1a', marginBottom: 8 }}>Tunnel management moved</h2>
+        <p>Manage tunnels directly from each deployment page</p>
+      </div>
+    </div>
+  );
+}
 
   useEffect(() => {
     loadTunnels();
