@@ -261,7 +261,9 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
     watch_branch: repo.watch_branch ?? 'main',
     enabled: repo.enabled,
     container_port: repo.container_port ?? 3000,
+    tunnel_type: (repo.tunnel_type ?? 'random') as 'random' | 'subdomain' | 'custom-domain',
     tunnel_subdomain: repo.tunnel_subdomain ?? '',
+    tunnel_domain: repo.tunnel_domain ?? '',
   });
   const [envVars, setEnvVars] = useState<Record<string, string>>(repo.deployment_env_vars || {});
   const [newKey, setNewKey] = useState('');
@@ -300,6 +302,7 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
         ...config,
         deployment_env_vars: envVars,
         tunnel_subdomain: config.tunnel_subdomain || null,
+        tunnel_domain: config.tunnel_domain || null,
       });
       if (response.ok) {
         toast('Changes saved', 'success');
@@ -638,22 +641,72 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
             <p style={{ color: '#999', fontSize: 11, marginTop: 4, fontWeight: 600 }}>Port your app listens on inside the container</p>
           </div>
 
-          <div style={{ marginBottom: 28 }}>
+          <div style={{ marginBottom: 16 }}>
             <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Tunnel Subdomain (optional)
+              Tunnel URL Mode
             </label>
-            <input
-              type="text"
-              value={config.tunnel_subdomain}
-              onChange={(e) => setConfig({ ...config, tunnel_subdomain: e.target.value })}
+            <select
+              value={config.tunnel_type}
+              onChange={(e) => setConfig({ ...config, tunnel_type: e.target.value as 'random' | 'subdomain' | 'custom-domain' })}
               style={{
                 width: '100%', padding: '12px 14px', border: '2px solid #1a1a1a',
-                background: '#f5f5f5', color: '#1a1a1a', fontSize: 14, fontWeight: 600, outline: 'none',
+                background: '#f5f5f5', color: '#1a1a1a', fontSize: 14, fontWeight: 600,
+                outline: 'none', cursor: 'pointer',
               }}
-              placeholder="myapp"
-            />
-            <p style={{ color: '#999', fontSize: 11, marginTop: 4, fontWeight: 600 }}>e.g. "myapp" → myapp.localto.net (set before first deploy)</p>
+            >
+              <option value="random">Random subdomain (auto)</option>
+              <option value="subdomain">Custom subdomain on localto.net</option>
+              <option value="custom-domain">Custom domain (your own)</option>
+            </select>
           </div>
+
+          {config.tunnel_type === 'subdomain' && (
+            <>
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Subdomain Name
+                </label>
+                <input
+                  type="text"
+                  value={config.tunnel_subdomain}
+                  onChange={(e) => setConfig({ ...config, tunnel_subdomain: e.target.value })}
+                  style={{ width: '100%', padding: '12px 14px', border: '2px solid #1a1a1a', background: '#f5f5f5', color: '#1a1a1a', fontSize: 14, fontWeight: 600, outline: 'none' }}
+                  placeholder="myapp"
+                />
+              </div>
+              <div style={{ marginBottom: 28 }}>
+                <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Base Domain
+                </label>
+                <input
+                  type="text"
+                  value={config.tunnel_domain}
+                  onChange={(e) => setConfig({ ...config, tunnel_domain: e.target.value })}
+                  style={{ width: '100%', padding: '12px 14px', border: '2px solid #1a1a1a', background: '#f5f5f5', color: '#1a1a1a', fontSize: 14, fontWeight: 600, outline: 'none' }}
+                  placeholder="localto.net"
+                />
+                <p style={{ color: '#999', fontSize: 11, marginTop: 4, fontWeight: 600 }}>Result: {config.tunnel_subdomain || 'myapp'}.{config.tunnel_domain || 'localto.net'}</p>
+              </div>
+            </>
+          )}
+
+          {config.tunnel_type === 'custom-domain' && (
+            <div style={{ marginBottom: 28 }}>
+              <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Custom Domain
+              </label>
+              <input
+                type="text"
+                value={config.tunnel_domain}
+                onChange={(e) => setConfig({ ...config, tunnel_domain: e.target.value })}
+                style={{ width: '100%', padding: '12px 14px', border: '2px solid #1a1a1a', background: '#f5f5f5', color: '#1a1a1a', fontSize: 14, fontWeight: 600, outline: 'none' }}
+                placeholder="myapp.com"
+              />
+              <p style={{ color: '#999', fontSize: 11, marginTop: 4, fontWeight: 600 }}>Must be linked to your Localtonet account</p>
+            </div>
+          )}
+
+          {config.tunnel_type === 'random' && <div style={{ marginBottom: 28 }} />}
 
           {/* Environment Variables */}
           <div style={{ marginBottom: 24 }}>

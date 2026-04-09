@@ -24,7 +24,9 @@ export interface Repository {
   service_name: string;
   container_port: number;
   tunnel_port: number | null;
+  tunnel_type: 'random' | 'subdomain' | 'custom-domain';
   tunnel_subdomain: string | null;
+  tunnel_domain: string | null;
   localtonet_tunnel_id: string | null;
   tunnel_url: string | null;
   created_at: string;

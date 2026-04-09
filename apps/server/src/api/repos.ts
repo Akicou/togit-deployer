@@ -22,7 +22,9 @@ const updateRepoSchema = z.object({
   deployment_env_vars: z.record(z.string(), z.string()).optional(),
   service_name: z.string().min(1).max(63).regex(/^[a-z0-9][a-z0-9_-]*$/, 'Service name must be lowercase alphanumeric, dashes, or underscores').optional(),
   container_port: z.number().int().min(1).max(65535).optional(),
+  tunnel_type: z.enum(['random', 'subdomain', 'custom-domain']).optional(),
   tunnel_subdomain: z.string().optional().nullable(),
+  tunnel_domain: z.string().optional().nullable(),
 });
 
 export async function listRepos(req: Request, user: User): Promise<Response> {
@@ -158,9 +160,17 @@ export async function updateRepo(req: Request, user: User, repoId: number): Prom
     updates.push(`container_port = $${paramIndex++}`);
     values.push(parsed.data.container_port);
   }
+  if (parsed.data.tunnel_type !== undefined) {
+    updates.push(`tunnel_type = $${paramIndex++}`);
+    values.push(parsed.data.tunnel_type);
+  }
   if (parsed.data.tunnel_subdomain !== undefined) {
     updates.push(`tunnel_subdomain = $${paramIndex++}`);
     values.push(parsed.data.tunnel_subdomain);
+  }
+  if (parsed.data.tunnel_domain !== undefined) {
+    updates.push(`tunnel_domain = $${paramIndex++}`);
+    values.push(parsed.data.tunnel_domain);
   }
 
   if (updates.length === 0) {

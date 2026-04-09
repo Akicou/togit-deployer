@@ -29,8 +29,12 @@ export interface Repository {
   container_port: number;
   /** Fixed host port assigned to this repo for tunnel routing. */
   tunnel_port: number | null;
-  /** Optional custom subdomain (e.g. "myapp" → myapp.localto.net). */
+  /** Tunnel creation mode: random, subdomain, or custom-domain. */
+  tunnel_type: 'random' | 'subdomain' | 'custom-domain';
+  /** Custom subdomain name (subdomain mode only, e.g. "myapp"). */
   tunnel_subdomain: string | null;
+  /** Domain for subdomain mode (e.g. "localto.net") or full domain for custom-domain mode. */
+  tunnel_domain: string | null;
   /** Persistent Localtonet tunnel ID, reused across redeployments. */
   localtonet_tunnel_id: string | null;
   /** Permanent public tunnel URL for this repo+service. */

@@ -1,59 +1,63 @@
 import { logNetwork, logSystem, logError } from '../logger/index.js';
 import { query } from '../db/client.js';
 
-const LOCALTONET_V1 = 'https://localtonet.com/api';
-const LOCALTONET_V2 = 'https://localtonet.com/api/v2';
+const API = 'https://localtonet.com/api/v2';
 
 interface LocaltonetTunnel {
   id: number;
   url: string;
   status: number;
+  clientPort?: number;
 }
 
-/**
- * Checks if Localtonet is configured.
- */
+export type TunnelType = 'random' | 'subdomain' | 'custom-domain';
+
 export function checkLocaltonetInstalled(): boolean {
   return !!process.env.LOCALTONET_AUTH_TOKEN;
 }
 
 export async function installLocaltonet(): Promise<void> {
   console.log('ℹ️  Localtonet uses the HTTP API. No CLI installation needed.');
-  console.log('   Set LOCALTONET_AUTH_TOKEN (API key) in your .env file to enable tunnels.');
+  console.log('   Set LOCALTONET_AUTH_TOKEN (v2 API key) in your .env file.');
 }
 
 /**
- * Find the first auth token whose client is currently online.
+ * Find the first auth token whose Localtonet client is currently online.
  */
 async function getOnlineClientToken(apiKey: string): Promise<string> {
-  const res = await fetch(`${LOCALTONET_V2}/auth-tokens`, {
+  const res = await fetch(`${API}/auth-tokens`, {
     headers: { Authorization: `Bearer ${apiKey}` },
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`Localtonet auth-tokens API error ${res.status}: ${body}`);
+    throw new Error(`Localtonet auth-tokens error ${res.status}: ${body}`);
   }
   const tokens = (await res.json()) as Array<{ token: string; clientIsOnline: boolean; name: string }>;
   const online = tokens.find((t) => t.clientIsOnline);
   if (!online) {
-    throw new Error('No Localtonet client is online. Make sure the Localtonet client is running on the host.');
+    throw new Error('No Localtonet client is online. Make sure the Localtonet client is running on this machine.');
   }
   return online.token;
 }
 
 /**
- * Create a tunnel (does NOT start it — call startTunnel() after).
- * Uses custom subdomain if provided, otherwise random subdomain.
+ * Create a tunnel (does NOT start routing — call startTunnel() after).
+ *
+ * Modes:
+ *   random       — random subdomain on Localtonet's domain
+ *   subdomain    — custom subdomain: opts.subDomain + opts.domain (e.g. myapp.localto.net)
+ *   custom-domain — your own domain: opts.domain (e.g. myapp.com)
  */
 export async function createTunnel(
   deploymentId: number,
   localPort: number,
   apiKey: string,
-  opts?: { subDomain?: string }
+  opts?: { type?: TunnelType; subDomain?: string; domain?: string }
 ): Promise<{ tunnelId: string; tunnelUrl: string }> {
   if (!apiKey) throw new Error('LOCALTONET_AUTH_TOKEN is required');
 
-  logNetwork(`Creating Localtonet tunnel for port ${localPort}`, { deployment_id: deploymentId });
+  const type = opts?.type || 'random';
+  logNetwork(`Creating Localtonet tunnel (${type}) for port ${localPort}`, { deployment_id: deploymentId });
 
   const clientToken = await getOnlineClientToken(apiKey);
   const serverCode = process.env.LOCALTONET_SERVER_CODE || 'fr2';
@@ -61,33 +65,30 @@ export async function createTunnel(
   let endpoint: string;
   let body: Record<string, unknown>;
 
-  if (opts?.subDomain) {
-    endpoint = `${LOCALTONET_V1}/CreateHttpCustomSubDomainTunnel`;
-    body = {
-      subDomainName: opts.subDomain,
-      ip: '127.0.0.1',
-      port: localPort,
-      serverCode,
-      authToken: clientToken,
-      protocolType: 1,
-    };
+  const base = {
+    ip: '127.0.0.1',
+    port: localPort,
+    serverCode,
+    authToken: clientToken,
+    protocolType: 1,
+  };
+
+  if (type === 'subdomain') {
+    if (!opts?.subDomain) throw new Error('tunnel_subdomain is required for subdomain mode');
+    endpoint = `${API}/tunnels/http/custom-subdomain`;
+    body = { ...base, subDomainName: opts.subDomain, domainName: opts.domain || 'localto.net' };
+  } else if (type === 'custom-domain') {
+    if (!opts?.domain) throw new Error('tunnel_domain is required for custom-domain mode');
+    endpoint = `${API}/tunnels/http/custom-domain`;
+    body = { ...base, domainName: opts.domain };
   } else {
-    endpoint = `${LOCALTONET_V1}/CreateHttpRandomSubDomainTunnel`;
-    body = {
-      ip: '127.0.0.1',
-      port: localPort,
-      serverCode,
-      authToken: clientToken,
-      protocolType: 1,
-    };
+    endpoint = `${API}/tunnels/http/random-subdomain`;
+    body = { ...base };
   }
 
   const response = await fetch(endpoint, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
 
@@ -96,79 +97,90 @@ export async function createTunnel(
     throw new Error(`Localtonet create tunnel error ${response.status}: ${text}`);
   }
 
-  const data = (await response.json()) as { result?: LocaltonetTunnel } | LocaltonetTunnel;
-  // v1 wraps in { result: ... }, v2 returns directly
-  const tunnel = ('result' in data && data.result) ? data.result : data as LocaltonetTunnel;
-
+  const tunnel = (await response.json()) as LocaltonetTunnel;
   if (!tunnel.id || !tunnel.url) {
-    throw new Error(`Localtonet returned invalid tunnel data: ${JSON.stringify(data)}`);
+    throw new Error(`Localtonet returned invalid tunnel data: ${JSON.stringify(tunnel)}`);
   }
 
   logSystem(`Tunnel created (not yet started): ${tunnel.url}`, { deployment_id: deploymentId });
-
   return { tunnelId: String(tunnel.id), tunnelUrl: tunnel.url };
 }
 
 /**
- * Start an existing tunnel by ID.
- * Must be called after createTunnel() for the tunnel to actually route traffic.
+ * Start an existing tunnel so it actually routes traffic.
+ * Must be called after createTunnel() on first deploy, and on every redeploy.
  */
 export async function startTunnel(tunnelId: string, apiKey: string): Promise<void> {
-  const response = await fetch(`${LOCALTONET_V1}/StartTunnel/${tunnelId}`, {
+  const res = await fetch(`${API}/tunnels/${tunnelId}/actions/start`, {
+    method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}` },
   });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Localtonet StartTunnel error ${response.status}: ${body}`);
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Localtonet StartTunnel error ${res.status}: ${body}`);
   }
-
   logSystem(`Tunnel ${tunnelId} started`);
 }
 
 /**
- * Stop a tunnel (keeps it registered, just not routing).
+ * Update the local port a tunnel forwards to.
+ * Called on redeploy when the fixed host port may have changed (e.g. after a reset).
+ */
+export async function updateTunnelPort(tunnelId: string, localPort: number, apiKey: string): Promise<void> {
+  const res = await fetch(`${API}/tunnels/${tunnelId}/local-port`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ localPort }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Localtonet UpdatePort error ${res.status}: ${body}`);
+  }
+  logSystem(`Tunnel ${tunnelId} local port updated to ${localPort}`);
+}
+
+/**
+ * Stop a tunnel (keeps it registered but stops routing traffic).
  */
 export async function stopTunnel(tunnelId: string, apiKey: string): Promise<void> {
   if (!apiKey || !tunnelId) return;
-
   logNetwork(`Stopping Localtonet tunnel ${tunnelId}`);
   try {
-    const response = await fetch(`${LOCALTONET_V1}/StopTunnel/${tunnelId}`, {
+    const res = await fetch(`${API}/tunnels/${tunnelId}/actions/stop`, {
+      method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}` },
     });
-    if (!response.ok && response.status !== 404) {
-      const body = await response.text();
-      logError(`Failed to stop tunnel ${tunnelId}: ${response.status} ${body}`);
+    if (!res.ok && res.status !== 404) {
+      const body = await res.text();
+      logError(`Failed to stop tunnel ${tunnelId}: ${res.status} ${body}`);
     }
-  } catch (error) {
-    logError(`Error stopping tunnel ${tunnelId}: ${error instanceof Error ? error.message : String(error)}`);
+  } catch (err) {
+    logError(`Error stopping tunnel ${tunnelId}: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
 /**
- * Permanently delete a tunnel. Called when a repo is deleted.
+ * Permanently delete a tunnel. Called when a repo is deleted or tunnel is reset.
  */
 export async function deleteTunnel(tunnelId: string, apiKey: string): Promise<void> {
   if (!apiKey || !tunnelId) return;
-
   logNetwork(`Deleting Localtonet tunnel ${tunnelId}`);
   try {
-    const response = await fetch(`${LOCALTONET_V1}/DeleteTunnel/${tunnelId}`, {
+    const res = await fetch(`${API}/tunnels/${tunnelId}`, {
+      method: 'DELETE',
       headers: { Authorization: `Bearer ${apiKey}` },
     });
-    if (!response.ok && response.status !== 404) {
-      const body = await response.text();
-      logError(`Failed to delete tunnel ${tunnelId}: ${response.status} ${body}`);
+    if (!res.ok && res.status !== 404) {
+      const body = await res.text();
+      logError(`Failed to delete tunnel ${tunnelId}: ${res.status} ${body}`);
     }
-  } catch (error) {
-    logError(`Error deleting tunnel ${tunnelId}: ${error instanceof Error ? error.message : String(error)}`);
+  } catch (err) {
+    logError(`Error deleting tunnel ${tunnelId}: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
 /**
- * Stop all tunnels on server shutdown. Queries repositories (not deployments)
- * since tunnels are now per-repo.
+ * Stop all repo tunnels on server shutdown.
  */
 export async function stopAllTunnels(): Promise<void> {
   const authToken = process.env.LOCALTONET_AUTH_TOKEN || '';
@@ -205,13 +217,8 @@ export async function getActiveTunnels(): Promise<Array<{
       started_at: Date;
       repo_full_name: string;
     }>(`
-      SELECT
-        d.id,
-        d.localtonet_tunnel_id,
-        d.tunnel_url,
-        d.tunnel_port,
-        d.started_at,
-        r.full_name as repo_full_name
+      SELECT d.id, d.localtonet_tunnel_id, d.tunnel_url, d.tunnel_port, d.started_at,
+             r.full_name as repo_full_name
       FROM deployments d
       JOIN repositories r ON r.id = d.repo_id
       WHERE d.status = 'running'
@@ -241,37 +248,23 @@ export async function getTunnelStatus(tunnelId: string, authToken: string): Prom
   url?: string;
   error?: string;
 }> {
-  if (!authToken) {
-    return { exists: false, isActive: false, error: 'No auth token' };
-  }
+  if (!authToken) return { exists: false, isActive: false, error: 'No auth token' };
 
   try {
-    const response = await fetch(`${LOCALTONET_V2}/tunnels/${tunnelId}`, {
+    const res = await fetch(`${API}/tunnels/${tunnelId}`, {
       headers: { Authorization: `Bearer ${authToken}` },
     });
 
-    if (response.status === 404) {
-      return { exists: false, isActive: false };
+    if (res.status === 404) return { exists: false, isActive: false };
+    if (!res.ok) {
+      const body = await res.text();
+      return { exists: true, isActive: false, error: `API error ${res.status}: ${body}` };
     }
 
-    if (!response.ok) {
-      const body = await response.text();
-      return { exists: true, isActive: false, error: `API error ${response.status}: ${body}` };
-    }
-
-    const tunnel = await response.json() as LocaltonetTunnel & { url?: string };
-
-    return {
-      exists: true,
-      isActive: tunnel.status === 1,
-      url: tunnel.url
-    };
+    const tunnel = await res.json() as LocaltonetTunnel;
+    return { exists: true, isActive: tunnel.status === 1, url: tunnel.url };
   } catch (error) {
-    return {
-      exists: false,
-      isActive: false,
-      error: error instanceof Error ? error.message : String(error)
-    };
+    return { exists: false, isActive: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -280,32 +273,21 @@ export async function testLocaltonetConnection(authToken: string): Promise<{
   error?: string;
   activeTunnelsCount?: number;
 }> {
-  if (!authToken) {
-    return { success: false, error: 'No auth token provided' };
-  }
+  if (!authToken) return { success: false, error: 'No auth token provided' };
 
   try {
-    const response = await fetch(`${LOCALTONET_V2}/tunnels`, {
+    const res = await fetch(`${API}/tunnels`, {
       headers: { Authorization: `Bearer ${authToken}` },
     });
 
-    if (!response.ok) {
-      const body = await response.text();
-      return { success: false, error: `API error ${response.status}: ${body}` };
+    if (!res.ok) {
+      const body = await res.text();
+      return { success: false, error: `API error ${res.status}: ${body}` };
     }
 
-    const data = await response.json() as any[];
-    const activeCount = data.filter((t: any) => t.status === 1).length;
-
-    return {
-      success: true,
-      activeTunnelsCount: activeCount,
-    };
+    const data = await res.json() as any[];
+    return { success: true, activeTunnelsCount: data.filter((t: any) => t.status === 1).length };
   } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-      activeTunnelsCount: 0
-    };
+    return { success: false, error: error instanceof Error ? error.message : String(error), activeTunnelsCount: 0 };
   }
 }

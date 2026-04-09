@@ -5,7 +5,8 @@ import path from 'path';
 import fs from 'fs';
 import { query } from '../db/client.js';
 import { logBuild, logDocker, logSystem, logError } from '../logger/index.js';
-import { createTunnel, startTunnel } from './localtonet.js';
+import { createTunnel, startTunnel, updateTunnelPort } from './localtonet.js';
+import type { TunnelType } from './localtonet.js';
 import { rollbackRepo } from './rollback.js';
 import { decryptAccessToken } from '../github/oauth.js';
 import type { Repository, Deployment, User } from '../types.js';
@@ -407,15 +408,22 @@ export async function deploy(
     let tunnelUrl = freshRepo.tunnel_url;
 
     if (!tunnelId) {
-      // First deploy: create the tunnel
+      // First deploy: create the tunnel using the configured type
       const t = await createTunnel(deployment.id, tunnelPort, authToken, {
+        type: (freshRepo as any).tunnel_type as TunnelType || 'random',
         subDomain: freshRepo.tunnel_subdomain || undefined,
+        domain: (freshRepo as any).tunnel_domain || undefined,
       });
       tunnelId = t.tunnelId;
       tunnelUrl = t.tunnelUrl;
       await query(
         `UPDATE repositories SET localtonet_tunnel_id = $1, tunnel_url = $2, tunnel_port = $3 WHERE id = $4`,
         [tunnelId, tunnelUrl, tunnelPort, freshRepo.id]
+      );
+    } else {
+      // Reuse existing tunnel — ensure it points to the current host port
+      await updateTunnelPort(tunnelId, tunnelPort, authToken).catch((err) =>
+        logDocker(`Could not update tunnel port (non-fatal): ${err.message}`)
       );
     }
 
