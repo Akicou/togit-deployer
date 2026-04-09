@@ -4,7 +4,6 @@ import { motion } from 'framer-motion';
 import { api } from '../lib/api';
 import { useRecentDeployments } from '../hooks/useDeployments';
 import DeployBadge from '../components/DeployBadge';
-import AnimatedStatus from '../components/AnimatedStatus';
 import type { User, Stats, SystemStatus } from '../types';
 
 interface DashboardProps {
@@ -51,10 +50,10 @@ export default function Dashboard({ user }: DashboardProps) {
   }
 
   const statCards = [
-    { label: 'Total Repos', value: stats?.total_repos ?? 0, color: '#6366f1' },
-    { label: 'Active Deployments', value: stats?.active_deployments ?? 0, color: '#3fb950' },
-    { label: 'Failed Today', value: stats?.failed_today ?? 0, color: '#f85149' },
-    { label: 'Tunnels Online', value: stats?.tunnels_online ?? 0, color: '#22d3ee' },
+    { label: 'Total Repos', value: stats?.total_repos ?? 0 },
+    { label: 'Active Deployments', value: stats?.active_deployments ?? 0 },
+    { label: 'Failed Today', value: stats?.failed_today ?? 0 },
+    { label: 'Tunnels Online', value: stats?.tunnels_online ?? 0 },
   ];
 
   return (
@@ -62,12 +61,12 @@ export default function Dashboard({ user }: DashboardProps) {
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        style={{ marginBottom: 32 }}
+        style={{ marginBottom: 40 }}
       >
-        <h1 style={{ fontSize: 28, fontWeight: 700, color: '#f0f6fc', marginBottom: 8 }}>
-          Dashboard
+        <h1 style={{ fontSize: 36, fontWeight: 800, color: '#1a1a1a', marginBottom: 8, letterSpacing: '-1px' }}>
+          DASHBOARD
         </h1>
-        <p style={{ color: '#8b949e' }}>
+        <p style={{ color: '#666', fontWeight: 600, fontSize: 14 }}>
           Welcome back, {user.github_login}
         </p>
       </motion.div>
@@ -77,7 +76,7 @@ export default function Dashboard({ user }: DashboardProps) {
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
         gap: 16,
-        marginBottom: 32,
+        marginBottom: 40,
       }}>
         {statCards.map((stat, index) => (
           <motion.div
@@ -86,23 +85,27 @@ export default function Dashboard({ user }: DashboardProps) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.1 }}
             style={{
-              background: '#161b22',
-              border: '1px solid #30363d',
-              borderRadius: 12,
-              padding: 20,
+              background: '#ffffff',
+              border: '3px solid #1a1a1a',
+              padding: 24,
+              boxShadow: '4px 4px 0 #1a1a1a',
             }}
           >
             <div style={{
-              fontSize: 13,
-              color: '#8b949e',
+              fontSize: 11,
+              color: '#666',
               marginBottom: 8,
+              fontWeight: 800,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
             }}>
               {stat.label}
             </div>
             <div style={{
-              fontSize: 32,
-              fontWeight: 700,
-              color: stat.color,
+              fontSize: 40,
+              fontWeight: 800,
+              color: '#1a1a1a',
+              lineHeight: 1,
             }}>
               {stat.value}
             </div>
@@ -117,77 +120,78 @@ export default function Dashboard({ user }: DashboardProps) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
           style={{
-            background: '#161b22',
-            border: '1px solid #30363d',
-            borderRadius: 12,
-            padding: 20,
+            background: '#ffffff',
+            border: '3px solid #1a1a1a',
+            padding: 24,
+            boxShadow: '4px 4px 0 #1a1a1a',
           }}
         >
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            marginBottom: 16,
+            marginBottom: 20,
           }}>
-            <h2 style={{ fontSize: 18, fontWeight: 600, color: '#f0f6fc' }}>
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Recent Deployments
             </h2>
             <Link
               to="/repositories"
               style={{
-                color: '#6366f1',
-                textDecoration: 'none',
+                color: '#1a1a1a',
+                textDecoration: 'underline',
                 fontSize: 13,
+                fontWeight: 700,
               }}
             >
-              View all →
+              VIEW ALL →
             </Link>
           </div>
 
           {deploymentsLoading ? (
-            <div style={{ textAlign: 'center', padding: 40, color: '#8b949e' }}>
+            <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
               Loading...
             </div>
           ) : deployments.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 40, color: '#8b949e' }}>
+            <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
               No deployments yet
             </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid #30363d' }}>
-                    <th style={{ textAlign: 'left', padding: '8px 12px', color: '#8b949e', fontSize: 12, fontWeight: 500 }}>Repository</th>
-                    <th style={{ textAlign: 'left', padding: '8px 12px', color: '#8b949e', fontSize: 12, fontWeight: 500 }}>Ref</th>
-                    <th style={{ textAlign: 'left', padding: '8px 12px', color: '#8b949e', fontSize: 12, fontWeight: 500 }}>Status</th>
-                    <th style={{ textAlign: 'left', padding: '8px 12px', color: '#8b949e', fontSize: 12, fontWeight: 500 }}>Time</th>
+                  <tr style={{ borderBottom: '3px solid #1a1a1a' }}>
+                    <th style={{ textAlign: 'left', padding: '12px', color: '#1a1a1a', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Repository</th>
+                    <th style={{ textAlign: 'left', padding: '12px', color: '#1a1a1a', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Ref</th>
+                    <th style={{ textAlign: 'left', padding: '12px', color: '#1a1a1a', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Status</th>
+                    <th style={{ textAlign: 'left', padding: '12px', color: '#1a1a1a', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Time</th>
                   </tr>
                 </thead>
                 <tbody>
                   {deployments.slice(0, 10).map((deployment) => (
                     <tr
                       key={deployment.id}
-                      style={{ borderBottom: '1px solid #21262d' }}
+                      style={{ borderBottom: '2px solid #1a1a1a' }}
                     >
-                      <td style={{ padding: '12px' }}>
+                      <td style={{ padding: '14px 12px' }}>
                         <Link
                           to={`/repositories/${deployment.repo_id}`}
                           style={{
-                            color: '#f0f6fc',
+                            color: '#1a1a1a',
                             textDecoration: 'none',
-                            fontWeight: 500,
+                            fontWeight: 700,
                           }}
                         >
                           {deployment.repo_full_name}
                         </Link>
                       </td>
-                      <td style={{ padding: '12px', fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: '#8b949e' }}>
+                      <td style={{ padding: '14px 12px', fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: '#666' }}>
                         {deployment.ref.substring(0, 8)}...
                       </td>
-                      <td style={{ padding: '12px' }}>
+                      <td style={{ padding: '14px 12px' }}>
                         <DeployBadge status={deployment.status} />
                       </td>
-                      <td style={{ padding: '12px', fontSize: 13, color: '#8b949e' }}>
+                      <td style={{ padding: '14px 12px', fontSize: 13, color: '#666', fontWeight: 600 }}>
                         {new Date(deployment.started_at).toLocaleString()}
                       </td>
                     </tr>
@@ -204,13 +208,13 @@ export default function Dashboard({ user }: DashboardProps) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
           style={{
-            background: '#161b22',
-            border: '1px solid #30363d',
-            borderRadius: 12,
-            padding: 20,
+            background: '#ffffff',
+            border: '3px solid #1a1a1a',
+            padding: 24,
+            boxShadow: '4px 4px 0 #1a1a1a',
           }}
         >
-          <h2 style={{ fontSize: 18, fontWeight: 600, color: '#f0f6fc', marginBottom: 16 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginBottom: 20, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             System Health
           </h2>
 
@@ -219,54 +223,78 @@ export default function Dashboard({ user }: DashboardProps) {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              padding: 12,
-              background: '#0d1117',
-              borderRadius: 8,
+              padding: 14,
+              border: '2px solid #1a1a1a',
+              background: '#ffffff',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <DockerIcon />
-                <span style={{ fontSize: 14 }}>Docker</span>
+                <span style={{ fontSize: 14, fontWeight: 700 }}>Docker</span>
               </div>
-              <AnimatedStatus
-                status={systemStatus?.docker === 'running' ? 'running' : 'failed'}
-                size={20}
-              />
+              <div style={{
+                padding: '4px 10px',
+                border: '2px solid #1a1a1a',
+                background: systemStatus?.docker === 'running' ? '#1a1a1a' : '#ffffff',
+                color: systemStatus?.docker === 'running' ? '#ffffff' : '#1a1a1a',
+                fontSize: 10,
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+              }}>
+                {systemStatus?.docker === 'running' ? 'ONLINE' : 'OFFLINE'}
+              </div>
             </div>
 
             <div style={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              padding: 12,
-              background: '#0d1117',
-              borderRadius: 8,
+              padding: 14,
+              border: '2px solid #1a1a1a',
+              background: '#ffffff',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <DatabaseIcon />
-                <span style={{ fontSize: 14 }}>Database</span>
+                <span style={{ fontSize: 14, fontWeight: 700 }}>Database</span>
               </div>
-              <AnimatedStatus
-                status={systemStatus?.database === 'connected' ? 'running' : 'failed'}
-                size={20}
-              />
+              <div style={{
+                padding: '4px 10px',
+                border: '2px solid #1a1a1a',
+                background: systemStatus?.database === 'connected' ? '#1a1a1a' : '#ffffff',
+                color: systemStatus?.database === 'connected' ? '#ffffff' : '#1a1a1a',
+                fontSize: 10,
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+              }}>
+                {systemStatus?.database === 'connected' ? 'ONLINE' : 'OFFLINE'}
+              </div>
             </div>
 
             <div style={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              padding: 12,
-              background: '#0d1117',
-              borderRadius: 8,
+              padding: 14,
+              border: '2px solid #1a1a1a',
+              background: '#ffffff',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <TunnelIcon />
-                <span style={{ fontSize: 14 }}>Localtonet</span>
+                <span style={{ fontSize: 14, fontWeight: 700 }}>Localtonet</span>
               </div>
-              <AnimatedStatus
-                status={systemStatus?.localtonet === 'installed' ? 'running' : 'pending'}
-                size={20}
-              />
+              <div style={{
+                padding: '4px 10px',
+                border: '2px solid #1a1a1a',
+                background: systemStatus?.localtonet === 'installed' ? '#1a1a1a' : '#ffffff',
+                color: systemStatus?.localtonet === 'installed' ? '#ffffff' : '#1a1a1a',
+                fontSize: 10,
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+              }}>
+                {systemStatus?.localtonet === 'installed' ? 'ONLINE' : 'PENDING'}
+              </div>
             </div>
           </div>
         </motion.div>
@@ -277,7 +305,7 @@ export default function Dashboard({ user }: DashboardProps) {
 
 function DockerIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2496ed" strokeWidth="2">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" strokeWidth="2.5">
       <path d="M8.5 2.5h7v7h-7v-7zM22 9.5h-5v5h5v-5zM1 9.5H0v5h1v-5zM16 2.5h5v5h-5v-5zM2.5 16h7v7h-7v-7z" />
     </svg>
   );
@@ -285,7 +313,7 @@ function DockerIcon() {
 
 function DatabaseIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#336791" strokeWidth="2">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" strokeWidth="2.5">
       <ellipse cx="12" cy="5" rx="9" ry="3" />
       <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
       <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
@@ -295,7 +323,7 @@ function DatabaseIcon() {
 
 function TunnelIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" strokeWidth="2">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" strokeWidth="2.5">
       <circle cx="12" cy="12" r="10" />
       <line x1="2" y1="12" x2="22" y2="12" />
       <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />

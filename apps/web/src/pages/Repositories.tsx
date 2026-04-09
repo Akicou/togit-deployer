@@ -52,13 +52,12 @@ export default function Repositories({ user }: RepositoriesProps) {
     }
   }
 
-  // If we have an ID, show the detail view
   if (id) {
     const repo = repos.find((r) => r.id === parseInt(id, 10));
     return repo ? (
       <RepoDetail repo={repo} user={user} onRefresh={loadRepos} />
     ) : (
-      <div style={{ color: '#8b949e' }}>Loading...</div>
+      <div style={{ color: '#666', fontWeight: 600 }}>Loading...</div>
     );
   }
 
@@ -71,15 +70,15 @@ export default function Repositories({ user }: RepositoriesProps) {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: 32,
+          marginBottom: 40,
         }}
       >
         <div>
-          <h1 style={{ fontSize: 28, fontWeight: 700, color: '#f0f6fc', marginBottom: 8 }}>
-            Repositories
+          <h1 style={{ fontSize: 36, fontWeight: 800, color: '#1a1a1a', marginBottom: 8, letterSpacing: '-1px' }}>
+            REPOSITORIES
           </h1>
-          <p style={{ color: '#8b949e' }}>
-            {repos.length} repository{repos.length !== 1 ? 'ies' : ''} configured
+          <p style={{ color: '#666', fontWeight: 600, fontSize: 14 }}>
+            {repos.length} {repos.length === 1 ? 'repository' : 'repositories'} configured
           </p>
         </div>
 
@@ -90,16 +89,28 @@ export default function Repositories({ user }: RepositoriesProps) {
               display: 'flex',
               alignItems: 'center',
               gap: 8,
-              padding: '10px 20px',
-              borderRadius: 8,
-              border: 'none',
-              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-              color: 'white',
-              fontWeight: 600,
+              padding: '14px 24px',
+              border: '3px solid #1a1a1a',
+              background: '#1a1a1a',
+              color: '#ffffff',
+              fontWeight: 800,
               cursor: 'pointer',
+              fontSize: 13,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              boxShadow: '6px 6px 0 #1a1a1a',
+              transition: 'all 0.1s ease',
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.boxShadow = '3px 3px 0 #1a1a1a';
+              e.currentTarget.style.transform = 'translate(3px, 3px)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.boxShadow = '6px 6px 0 #1a1a1a';
+              e.currentTarget.style.transform = 'translate(0, 0)';
             }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
@@ -109,7 +120,7 @@ export default function Repositories({ user }: RepositoriesProps) {
       </motion.div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#8b949e' }}>
+        <div style={{ textAlign: 'center', padding: 60, color: '#666', fontWeight: 700 }}>
           Loading repositories...
         </div>
       ) : repos.length === 0 ? (
@@ -119,31 +130,33 @@ export default function Repositories({ user }: RepositoriesProps) {
           style={{
             textAlign: 'center',
             padding: 60,
-            background: '#161b22',
-            borderRadius: 12,
-            border: '1px dashed #30363d',
+            background: '#ffffff',
+            border: '3px dashed #1a1a1a',
           }}
         >
-          <div style={{ fontSize: 48, marginBottom: 16 }}>
-            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#30363d" strokeWidth="1.5" style={{ margin: '0 auto' }}>
+          <div style={{ marginBottom: 16 }}>
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" strokeWidth="1.5" style={{ margin: '0 auto', opacity: 0.3 }}>
               <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
             </svg>
           </div>
-          <h3 style={{ color: '#f0f6fc', marginBottom: 8 }}>No repositories yet</h3>
-          <p style={{ color: '#8b949e', marginBottom: 24 }}>
+          <h3 style={{ color: '#1a1a1a', marginBottom: 8, fontWeight: 800, fontSize: 20, textTransform: 'uppercase' }}>No repositories yet</h3>
+          <p style={{ color: '#666', marginBottom: 28, fontWeight: 600 }}>
             Add a GitHub repository to start deploying
           </p>
           {canManage && (
             <button
               onClick={() => setShowAddModal(true)}
               style={{
-                padding: '10px 20px',
-                borderRadius: 8,
-                border: 'none',
-                background: '#6366f1',
-                color: 'white',
-                fontWeight: 600,
+                padding: '14px 28px',
+                border: '3px solid #1a1a1a',
+                background: '#1a1a1a',
+                color: '#ffffff',
+                fontWeight: 800,
                 cursor: 'pointer',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                boxShadow: '4px 4px 0 #1a1a1a',
+                transition: 'all 0.1s ease',
               }}
             >
               Add Repository
@@ -154,7 +167,7 @@ export default function Repositories({ user }: RepositoriesProps) {
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-          gap: 16,
+          gap: 20,
         }}>
           {repos.map((repo, index) => (
             <motion.div
@@ -216,26 +229,29 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
         <Link
           to="/repositories"
           style={{
-            color: '#8b949e',
+            color: '#666',
             textDecoration: 'none',
-            fontSize: 14,
+            fontSize: 13,
             display: 'inline-flex',
             alignItems: 'center',
             gap: 4,
-            marginBottom: 16,
+            marginBottom: 20,
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
           }}
         >
-          ← Back to Repositories
+          ← Back
         </Link>
 
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'flex-start',
-          marginBottom: 32,
+          marginBottom: 36,
         }}>
           <div>
-            <h1 style={{ fontSize: 28, fontWeight: 700, color: '#f0f6fc', marginBottom: 8 }}>
+            <h1 style={{ fontSize: 32, fontWeight: 800, color: '#1a1a1a', marginBottom: 12, letterSpacing: '-1px' }}>
               {repo.full_name}
             </h1>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -249,16 +265,19 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 4,
-                    padding: '4px 10px',
-                    borderRadius: 16,
-                    background: 'rgba(34, 211, 238, 0.15)',
-                    color: '#22d3ee',
+                    padding: '6px 12px',
+                    border: '2px solid #1a1a1a',
+                    background: '#1a1a1a',
+                    color: '#ffffff',
                     fontSize: 12,
-                    fontWeight: 500,
+                    fontWeight: 800,
                     textDecoration: 'none',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    boxShadow: '2px 2px 0 #1a1a1a',
                   }}
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                     <polyline points="15 3 21 3 21 9" />
                     <line x1="10" y1="14" x2="21" y2="3" />
@@ -278,14 +297,17 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
                 }}
                 disabled={isDeploying}
                 style={{
-                  padding: '10px 20px',
-                  borderRadius: 8,
-                  border: 'none',
-                  background: isDeploying ? '#484f58' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                  color: 'white',
-                  fontWeight: 600,
+                  padding: '14px 24px',
+                  border: '3px solid #1a1a1a',
+                  background: isDeploying ? '#f5f5f5' : '#1a1a1a',
+                  color: isDeploying ? '#666' : '#ffffff',
+                  fontWeight: 800,
                   cursor: isDeploying ? 'not-allowed' : 'pointer',
-                  opacity: isDeploying ? 0.7 : 1,
+                  fontSize: 13,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  boxShadow: isDeploying ? '2px 2px 0 #1a1a1a' : '6px 6px 0 #1a1a1a',
+                  transition: 'all 0.1s ease',
                 }}
               >
                 {isDeploying ? 'Deploying...' : 'Deploy Now'}
@@ -302,18 +324,18 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
           style={{
-            background: '#161b22',
-            border: '1px solid #30363d',
-            borderRadius: 12,
-            padding: 20,
+            background: '#ffffff',
+            border: '3px solid #1a1a1a',
+            padding: 28,
+            boxShadow: '4px 4px 0 #1a1a1a',
           }}
         >
-          <h2 style={{ fontSize: 18, fontWeight: 600, color: '#f0f6fc', marginBottom: 20 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginBottom: 24, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             Configuration
           </h2>
 
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', color: '#8b949e', fontSize: 13, marginBottom: 6 }}>
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Root Path
             </label>
             <input
@@ -322,19 +344,20 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
               onChange={(e) => setConfig({ ...config, root_path: e.target.value })}
               style={{
                 width: '100%',
-                padding: '10px 12px',
-                borderRadius: 6,
-                border: '1px solid #30363d',
-                background: '#0d1117',
-                color: '#f0f6fc',
+                padding: '12px 14px',
+                border: '2px solid #1a1a1a',
+                background: '#f5f5f5',
+                color: '#1a1a1a',
                 fontSize: 14,
+                fontWeight: 600,
+                outline: 'none',
               }}
               placeholder="/"
             />
           </div>
 
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', color: '#8b949e', fontSize: 13, marginBottom: 6 }}>
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Deploy Mode
             </label>
             <select
@@ -342,21 +365,23 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
               onChange={(e) => setConfig({ ...config, deploy_mode: e.target.value as 'release' | 'commit' })}
               style={{
                 width: '100%',
-                padding: '10px 12px',
-                borderRadius: 6,
-                border: '1px solid #30363d',
-                background: '#0d1117',
-                color: '#f0f6fc',
+                padding: '12px 14px',
+                border: '2px solid #1a1a1a',
+                background: '#f5f5f5',
+                color: '#1a1a1a',
                 fontSize: 14,
+                fontWeight: 600,
+                outline: 'none',
+                cursor: 'pointer',
               }}
             >
-              <option value="release">Release (deploy on new tags)</option>
-              <option value="commit">Commit (deploy on new commits)</option>
+              <option value="release">Release — deploy on new tags</option>
+              <option value="commit">Commit — deploy on new commits</option>
             </select>
           </div>
 
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', color: '#8b949e', fontSize: 13, marginBottom: 6 }}>
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Watch Branch
             </label>
             <input
@@ -365,26 +390,27 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
               onChange={(e) => setConfig({ ...config, watch_branch: e.target.value })}
               style={{
                 width: '100%',
-                padding: '10px 12px',
-                borderRadius: 6,
-                border: '1px solid #30363d',
-                background: '#0d1117',
-                color: '#f0f6fc',
+                padding: '12px 14px',
+                border: '2px solid #1a1a1a',
+                background: '#f5f5f5',
+                color: '#1a1a1a',
                 fontSize: 14,
+                fontWeight: 600,
+                outline: 'none',
               }}
               placeholder="main"
             />
           </div>
 
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+          <div style={{ marginBottom: 28 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
               <input
                 type="checkbox"
                 checked={config.enabled}
                 onChange={(e) => setConfig({ ...config, enabled: e.target.checked })}
-                style={{ width: 18, height: 18, accentColor: '#6366f1' }}
+                style={{ width: 18, height: 18, accentColor: '#1a1a1a', cursor: 'pointer' }}
               />
-              <span style={{ color: '#f0f6fc' }}>Auto-deploy enabled</span>
+              <span style={{ color: '#1a1a1a', fontWeight: 700, fontSize: 14 }}>Auto-deploy enabled</span>
             </label>
           </div>
 
@@ -393,13 +419,17 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
             disabled={saving}
             style={{
               width: '100%',
-              padding: '10px',
-              borderRadius: 6,
-              border: 'none',
-              background: saving ? '#484f58' : '#6366f1',
-              color: 'white',
-              fontWeight: 600,
+              padding: '14px',
+              border: '3px solid #1a1a1a',
+              background: saving ? '#f5f5f5' : '#1a1a1a',
+              color: saving ? '#666' : '#ffffff',
+              fontWeight: 800,
               cursor: saving ? 'not-allowed' : 'pointer',
+              fontSize: 13,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              boxShadow: saving ? '2px 2px 0 #1a1a1a' : '4px 4px 0 #1a1a1a',
+              transition: 'all 0.1s ease',
             }}
           >
             {saving ? 'Saving...' : 'Save Changes'}
@@ -412,26 +442,26 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
           style={{
-            background: '#161b22',
-            border: '1px solid #30363d',
-            borderRadius: 12,
-            padding: 20,
+            background: '#ffffff',
+            border: '3px solid #1a1a1a',
+            padding: 28,
+            boxShadow: '4px 4px 0 #1a1a1a',
           }}
         >
-          <h2 style={{ fontSize: 18, fontWeight: 600, color: '#f0f6fc', marginBottom: 20 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginBottom: 24, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             Deployment History
           </h2>
 
           {loading ? (
-            <div style={{ textAlign: 'center', padding: 40, color: '#8b949e' }}>
+            <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
               Loading...
             </div>
           ) : deployments.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 40, color: '#8b949e' }}>
+            <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
               No deployments yet
             </div>
           ) : (
-            <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+            <div style={{ maxHeight: 420, overflowY: 'auto' }}>
               {deployments.map((deployment) => (
                 <Link
                   key={deployment.id}
@@ -440,18 +470,30 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    padding: 12,
-                    background: '#0d1117',
-                    borderRadius: 8,
+                    padding: 14,
+                    border: '2px solid #1a1a1a',
                     marginBottom: 8,
                     textDecoration: 'none',
+                    background: '#ffffff',
+                    transition: 'all 0.1s ease',
+                    boxShadow: '2px 2px 0 #1a1a1a',
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.background = '#f5f5f5';
+                    e.currentTarget.style.boxShadow = '1px 1px 0 #1a1a1a';
+                    e.currentTarget.style.transform = 'translate(1px, 1px)';
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.background = '#ffffff';
+                    e.currentTarget.style.boxShadow = '2px 2px 0 #1a1a1a';
+                    e.currentTarget.style.transform = 'translate(0, 0)';
                   }}
                 >
                   <div>
-                    <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: '#f0f6fc' }}>
+                    <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: '#1a1a1a', fontWeight: 700 }}>
                       {deployment.ref.substring(0, 8)}...
                     </div>
-                    <div style={{ fontSize: 12, color: '#8b949e' }}>
+                    <div style={{ fontSize: 12, color: '#666', fontWeight: 600, marginTop: 4 }}>
                       {new Date(deployment.started_at).toLocaleString()}
                     </div>
                   </div>
@@ -520,6 +562,29 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
     }
   }
 
+  // Common input style
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '12px 14px',
+    border: '2px solid #1a1a1a',
+    background: '#f5f5f5',
+    color: '#1a1a1a',
+    fontSize: 14,
+    fontWeight: 600,
+    outline: 'none',
+    fontFamily: 'inherit',
+  };
+
+  const labelStyle: React.CSSProperties = {
+    display: 'block',
+    color: '#666',
+    fontSize: 11,
+    marginBottom: 8,
+    fontWeight: 800,
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -528,7 +593,7 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0, 0, 0, 0.7)',
+        background: 'rgba(0, 0, 0, 0.6)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -542,19 +607,39 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
         exit={{ scale: 0.9, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: '#161b22',
-          border: '1px solid #30363d',
-          borderRadius: 16,
-          padding: 24,
-          width: 500,
+          background: '#ffffff',
+          border: '4px solid #1a1a1a',
+          padding: 32,
+          width: 520,
           maxWidth: '90%',
-          maxHeight: '80vh',
+          maxHeight: '85vh',
           overflow: 'auto',
+          boxShadow: '8px 8px 0 #1a1a1a',
         }}
       >
-        <h2 style={{ fontSize: 20, fontWeight: 600, color: '#f0f6fc', marginBottom: 20 }}>
-          Add Repository
-        </h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
+          <h2 style={{ fontSize: 22, fontWeight: 800, color: '#1a1a1a', textTransform: 'uppercase', letterSpacing: '-0.5px' }}>
+            Add Repository
+          </h2>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: '2px solid #1a1a1a',
+              color: '#1a1a1a',
+              cursor: 'pointer',
+              fontWeight: 800,
+              fontSize: 16,
+              width: 36,
+              height: 36,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            ×
+          </button>
+        </div>
 
         {!selected ? (
           <>
@@ -564,24 +649,15 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search GitHub repositories..."
               autoFocus
-              style={{
-                width: '100%',
-                padding: '12px 16px',
-                borderRadius: 8,
-                border: '1px solid #30363d',
-                background: '#0d1117',
-                color: '#f0f6fc',
-                fontSize: 14,
-                marginBottom: 16,
-              }}
+              style={{ ...inputStyle, marginBottom: 20 }}
             />
 
             {loading ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#8b949e' }}>
+              <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
                 Searching...
               </div>
             ) : results.length === 0 && search.length >= 2 ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#8b949e' }}>
+              <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
                 No repositories found
               </div>
             ) : (
@@ -591,29 +667,34 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
                     key={repo.id}
                     onClick={() => setSelected(repo)}
                     style={{
-                      padding: 12,
-                      borderRadius: 8,
-                      background: '#0d1117',
+                      padding: 14,
                       marginBottom: 8,
                       cursor: 'pointer',
-                      border: '1px solid transparent',
+                      border: '2px solid #1a1a1a',
+                      background: '#ffffff',
+                      boxShadow: '2px 2px 0 #1a1a1a',
+                      transition: 'all 0.1s ease',
                     }}
                     onMouseOver={(e) => {
-                      e.currentTarget.style.borderColor = '#6366f1';
+                      e.currentTarget.style.background = '#1a1a1a';
+                      (e.currentTarget.querySelector('span') as HTMLElement).style.color = '#ffffff';
                     }}
                     onMouseOut={(e) => {
-                      e.currentTarget.style.borderColor = 'transparent';
+                      e.currentTarget.style.background = '#ffffff';
+                      (e.currentTarget.querySelector('span') as HTMLElement).style.color = '#1a1a1a';
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: '#f0f6fc', fontWeight: 500 }}>{repo.full_name}</span>
+                      <span style={{ color: '#1a1a1a', fontWeight: 700, transition: 'color 0.1s ease' }}>{repo.full_name}</span>
                       {repo.private && (
                         <span style={{
-                          fontSize: 11,
-                          padding: '2px 6px',
-                          borderRadius: 4,
-                          background: 'rgba(248, 81, 73, 0.15)',
-                          color: '#f85149',
+                          fontSize: 10,
+                          padding: '3px 8px',
+                          border: '2px solid #1a1a1a',
+                          color: '#1a1a1a',
+                          fontWeight: 800,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
                         }}>
                           Private
                         </span>
@@ -628,20 +709,24 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
           <>
             <div style={{
               padding: 16,
-              background: '#0d1117',
-              borderRadius: 8,
-              marginBottom: 20,
+              border: '2px solid #1a1a1a',
+              marginBottom: 24,
+              background: '#f5f5f5',
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#f0f6fc', fontWeight: 600 }}>{selected.full_name}</span>
+                <span style={{ color: '#1a1a1a', fontWeight: 800, fontSize: 15 }}>{selected.full_name}</span>
                 <button
                   onClick={() => setSelected(null)}
                   style={{
                     background: 'none',
-                    border: 'none',
-                    color: '#8b949e',
+                    border: '2px solid #1a1a1a',
+                    color: '#1a1a1a',
                     cursor: 'pointer',
-                    fontSize: 12,
+                    fontSize: 11,
+                    fontWeight: 800,
+                    padding: '4px 10px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
                   }}
                 >
                   Change
@@ -649,66 +734,36 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
               </div>
             </div>
 
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', color: '#8b949e', fontSize: 13, marginBottom: 6 }}>
-                Root Path
-              </label>
+            <div style={{ marginBottom: 20 }}>
+              <label style={labelStyle}>Root Path</label>
               <input
                 type="text"
                 value={config.root_path}
                 onChange={(e) => setConfig({ ...config, root_path: e.target.value })}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: 6,
-                  border: '1px solid #30363d',
-                  background: '#0d1117',
-                  color: '#f0f6fc',
-                  fontSize: 14,
-                }}
+                style={inputStyle}
                 placeholder="/"
               />
             </div>
 
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', color: '#8b949e', fontSize: 13, marginBottom: 6 }}>
-                Deploy Mode
-              </label>
+            <div style={{ marginBottom: 20 }}>
+              <label style={labelStyle}>Deploy Mode</label>
               <select
                 value={config.deploy_mode}
                 onChange={(e) => setConfig({ ...config, deploy_mode: e.target.value as 'release' | 'commit' })}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: 6,
-                  border: '1px solid #30363d',
-                  background: '#0d1117',
-                  color: '#f0f6fc',
-                  fontSize: 14,
-                }}
+                style={{ ...inputStyle, cursor: 'pointer' }}
               >
-                <option value="release">Release (deploy on new tags)</option>
-                <option value="commit">Commit (deploy on new commits)</option>
+                <option value="release">Release — deploy on new tags</option>
+                <option value="commit">Commit — deploy on new commits</option>
               </select>
             </div>
 
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ display: 'block', color: '#8b949e', fontSize: 13, marginBottom: 6 }}>
-                Watch Branch
-              </label>
+            <div style={{ marginBottom: 28 }}>
+              <label style={labelStyle}>Watch Branch</label>
               <input
                 type="text"
                 value={config.watch_branch}
                 onChange={(e) => setConfig({ ...config, watch_branch: e.target.value })}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: 6,
-                  border: '1px solid #30363d',
-                  background: '#0d1117',
-                  color: '#f0f6fc',
-                  fontSize: 14,
-                }}
+                style={inputStyle}
                 placeholder="main"
               />
             </div>
@@ -718,13 +773,17 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
                 onClick={onClose}
                 style={{
                   flex: 1,
-                  padding: '10px',
-                  borderRadius: 6,
-                  border: '1px solid #30363d',
-                  background: 'transparent',
-                  color: '#c9d1d9',
-                  fontWeight: 500,
+                  padding: '14px',
+                  border: '3px solid #1a1a1a',
+                  background: '#ffffff',
+                  color: '#1a1a1a',
+                  fontWeight: 800,
                   cursor: 'pointer',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  fontSize: 13,
+                  boxShadow: '3px 3px 0 #1a1a1a',
+                  transition: 'all 0.1s ease',
                 }}
               >
                 Cancel
@@ -734,13 +793,17 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
                 disabled={adding}
                 style={{
                   flex: 1,
-                  padding: '10px',
-                  borderRadius: 6,
-                  border: 'none',
-                  background: adding ? '#484f58' : '#6366f1',
-                  color: 'white',
-                  fontWeight: 600,
+                  padding: '14px',
+                  border: '3px solid #1a1a1a',
+                  background: adding ? '#f5f5f5' : '#1a1a1a',
+                  color: adding ? '#666' : '#ffffff',
+                  fontWeight: 800,
                   cursor: adding ? 'not-allowed' : 'pointer',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  fontSize: 13,
+                  boxShadow: adding ? '1px 1px 0 #1a1a1a' : '3px 3px 0 #1a1a1a',
+                  transition: 'all 0.1s ease',
                 }}
               >
                 {adding ? 'Adding...' : 'Add Repository'}

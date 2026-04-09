@@ -5,7 +5,11 @@ import { api } from '../lib/api';
 import { useWebSocket } from '../hooks/useWebSocket';
 import LogViewer from '../components/LogViewer';
 import DeployBadge from '../components/DeployBadge';
-import type { Deployment, Log, User } from '../types';
+import type { Deployment, Log } from '../types';
+
+interface DeploymentDetailProps {
+  user: any;
+}
 
 export default function DeploymentDetail({ user }: { user: User }) {
   const { id } = useParams<{ id: string }>();
@@ -76,7 +80,7 @@ export default function DeploymentDetail({ user }: { user: User }) {
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: 60, color: '#8b949e' }}>
+      <div style={{ textAlign: 'center', padding: 60, color: '#666', fontWeight: 600 }}>
         Loading deployment...
       </div>
     );
@@ -84,7 +88,7 @@ export default function DeploymentDetail({ user }: { user: User }) {
 
   if (!deployment) {
     return (
-      <div style={{ textAlign: 'center', padding: 60, color: '#8b949e' }}>
+      <div style={{ textAlign: 'center', padding: 60, color: '#666', fontWeight: 600 }}>
         Deployment not found
       </div>
     );
@@ -95,18 +99,21 @@ export default function DeploymentDetail({ user }: { user: User }) {
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        style={{ marginBottom: 24 }}
+        style={{ marginBottom: 28 }}
       >
         <Link
           to={`/repositories/${deployment.repo_id}`}
           style={{
-            color: '#8b949e',
+            color: '#666',
             textDecoration: 'none',
-            fontSize: 14,
+            fontSize: 13,
             display: 'inline-flex',
             alignItems: 'center',
             gap: 4,
-            marginBottom: 16,
+            marginBottom: 20,
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
           }}
         >
           ← Back to Repository
@@ -118,12 +125,12 @@ export default function DeploymentDetail({ user }: { user: User }) {
           alignItems: 'flex-start',
         }}>
           <div>
-            <h1 style={{ fontSize: 28, fontWeight: 700, color: '#f0f6fc', marginBottom: 8 }}>
-              Deployment #{deployment.id}
+            <h1 style={{ fontSize: 32, fontWeight: 800, color: '#1a1a1a', marginBottom: 12, letterSpacing: '-1px' }}>
+              DEPLOYMENT #{deployment.id}
             </h1>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <DeployBadge status={deployment.status} />
-              <span style={{ color: '#8b949e', fontSize: 14 }}>
+              <span style={{ color: '#666', fontSize: 14, fontWeight: 600 }}>
                 {deployment.repo_full_name}
               </span>
             </div>
@@ -133,14 +140,33 @@ export default function DeploymentDetail({ user }: { user: User }) {
               onClick={handleDelete}
               disabled={deleting}
               style={{
-                padding: '8px 16px',
-                borderRadius: 8,
-                border: '1px solid rgba(248, 81, 73, 0.4)',
-                background: deleting ? '#484f58' : 'rgba(248, 81, 73, 0.1)',
-                color: deleting ? '#8b949e' : '#f85149',
-                fontWeight: 600,
+                padding: '12px 20px',
+                border: '3px solid #1a1a1a',
+                background: deleting ? '#f5f5f5' : '#ffffff',
+                color: deleting ? '#666' : '#1a1a1a',
+                fontWeight: 800,
                 cursor: deleting ? 'not-allowed' : 'pointer',
-                fontSize: 14,
+                fontSize: 13,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                boxShadow: deleting ? '1px 1px 0 #1a1a1a' : '4px 4px 0 #1a1a1a',
+                transition: 'all 0.1s ease',
+              }}
+              onMouseOver={(e) => {
+                if (!deleting) {
+                  e.currentTarget.style.background = '#1a1a1a';
+                  e.currentTarget.style.color = '#ffffff';
+                  e.currentTarget.style.boxShadow = '2px 2px 0 #1a1a1a';
+                  e.currentTarget.style.transform = 'translate(2px, 2px)';
+                }
+              }}
+              onMouseOut={(e) => {
+                if (!deleting) {
+                  e.currentTarget.style.background = '#ffffff';
+                  e.currentTarget.style.color = '#1a1a1a';
+                  e.currentTarget.style.boxShadow = '4px 4px 0 #1a1a1a';
+                  e.currentTarget.style.transform = 'translate(0, 0)';
+                }
               }}
             >
               {deleting ? 'Deleting...' : 'Delete'}
@@ -155,11 +181,11 @@ export default function DeploymentDetail({ user }: { user: User }) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
         style={{
-          background: '#161b22',
-          border: '1px solid #30363d',
-          borderRadius: 12,
-          padding: 20,
+          background: '#ffffff',
+          border: '3px solid #1a1a1a',
+          padding: 28,
           marginBottom: 24,
+          boxShadow: '4px 4px 0 #1a1a1a',
         }}
       >
         <div style={{
@@ -168,36 +194,37 @@ export default function DeploymentDetail({ user }: { user: User }) {
           gap: 24,
         }}>
           <div>
-            <div style={{ color: '#8b949e', fontSize: 12, marginBottom: 4 }}>Ref</div>
-            <div style={{ fontFamily: 'JetBrains Mono, monospace', color: '#f0f6fc', fontWeight: 500 }}>
+            <div style={{ color: '#666', fontSize: 11, marginBottom: 6, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Ref</div>
+            <div style={{ fontFamily: 'JetBrains Mono, monospace', color: '#1a1a1a', fontWeight: 700, fontSize: 15 }}>
               {deployment.ref}
             </div>
           </div>
 
           <div>
-            <div style={{ color: '#8b949e', fontSize: 12, marginBottom: 4 }}>Type</div>
-            <div style={{ color: '#f0f6fc', textTransform: 'capitalize' }}>
+            <div style={{ color: '#666', fontSize: 11, marginBottom: 6, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Type</div>
+            <div style={{ color: '#1a1a1a', fontWeight: 700, textTransform: 'capitalize', fontSize: 15 }}>
               {deployment.ref_type}
             </div>
           </div>
 
           <div>
-            <div style={{ color: '#8b949e', fontSize: 12, marginBottom: 4 }}>Started</div>
-            <div style={{ color: '#f0f6fc' }}>
+            <div style={{ color: '#666', fontSize: 11, marginBottom: 6, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Started</div>
+            <div style={{ color: '#1a1a1a', fontWeight: 700, fontSize: 15 }}>
               {new Date(deployment.started_at).toLocaleString()}
             </div>
           </div>
 
           {deployment.tunnel_url && (
             <div>
-              <div style={{ color: '#8b949e', fontSize: 12, marginBottom: 4 }}>Tunnel URL</div>
+              <div style={{ color: '#666', fontSize: 11, marginBottom: 6, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Tunnel URL</div>
               <a
                 href={deployment.tunnel_url}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
-                  color: '#22d3ee',
-                  textDecoration: 'none',
+                  color: '#1a1a1a',
+                  textDecoration: 'underline',
+                  fontWeight: 700,
                 }}
               >
                 {deployment.tunnel_url} ↗
@@ -207,8 +234,8 @@ export default function DeploymentDetail({ user }: { user: User }) {
 
           {deployment.container_id && (
             <div>
-              <div style={{ color: '#8b949e', fontSize: 12, marginBottom: 4 }}>Container</div>
-              <div style={{ fontFamily: 'JetBrains Mono, monospace', color: '#f0f6fc', fontSize: 13 }}>
+              <div style={{ color: '#666', fontSize: 11, marginBottom: 6, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Container</div>
+              <div style={{ fontFamily: 'JetBrains Mono, monospace', color: '#1a1a1a', fontSize: 13, fontWeight: 700 }}>
                 {deployment.container_id.substring(0, 12)}...
               </div>
             </div>
@@ -216,8 +243,8 @@ export default function DeploymentDetail({ user }: { user: User }) {
 
           {deployment.triggered_by_login && (
             <div>
-              <div style={{ color: '#8b949e', fontSize: 12, marginBottom: 4 }}>Triggered By</div>
-              <div style={{ color: '#f0f6fc' }}>
+              <div style={{ color: '#666', fontSize: 11, marginBottom: 6, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Triggered By</div>
+              <div style={{ color: '#1a1a1a', fontWeight: 700, fontSize: 15 }}>
                 {deployment.triggered_by_login}
               </div>
             </div>
@@ -226,14 +253,16 @@ export default function DeploymentDetail({ user }: { user: User }) {
 
         {deployment.error_message && (
           <div style={{
-            marginTop: 20,
-            padding: 16,
-            background: 'rgba(248, 81, 73, 0.1)',
-            border: '1px solid rgba(248, 81, 73, 0.3)',
-            borderRadius: 8,
+            marginTop: 24,
+            padding: 20,
+            border: '3px solid #1a1a1a',
+            background: '#f5f5f5',
+            boxShadow: '4px 4px 0 #1a1a1a',
           }}>
-            <div style={{ color: '#f85149', fontWeight: 500, marginBottom: 4 }}>Error</div>
-            <div style={{ color: '#c9d1d9', fontFamily: 'JetBrains Mono, monospace', fontSize: 13 }}>
+            <div style={{ color: '#1a1a1a', fontWeight: 800, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: 12 }}>
+              ⚠ Error
+            </div>
+            <div style={{ color: '#1a1a1a', fontFamily: 'JetBrains Mono, monospace', fontSize: 13, fontWeight: 600, lineHeight: 1.6 }}>
               {deployment.error_message}
             </div>
           </div>
@@ -246,44 +275,46 @@ export default function DeploymentDetail({ user }: { user: User }) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
         style={{
-          background: '#161b22',
-          border: '1px solid #30363d',
-          borderRadius: 12,
-          padding: 20,
+          background: '#ffffff',
+          border: '3px solid #1a1a1a',
+          padding: 28,
+          boxShadow: '4px 4px 0 #1a1a1a',
         }}
       >
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: 16,
+          marginBottom: 20,
         }}>
-          <h2 style={{ fontSize: 18, fontWeight: 600, color: '#f0f6fc' }}>
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             Build Logs
           </h2>
           <div style={{
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-            padding: '4px 10px',
-            borderRadius: 12,
-            background: connected ? 'rgba(63, 185, 80, 0.15)' : 'rgba(139, 148, 158, 0.15)',
-            color: connected ? '#3fb950' : '#8b949e',
-            fontSize: 12,
+            padding: '6px 12px',
+            border: '2px solid #1a1a1a',
+            background: connected ? '#1a1a1a' : '#ffffff',
+            color: connected ? '#ffffff' : '#666',
+            fontSize: 11,
+            fontWeight: 800,
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
           }}>
             <span style={{
               width: 6,
               height: 6,
-              borderRadius: '50%',
-              background: connected ? '#3fb950' : '#8b949e',
+              background: connected ? '#ffffff' : '#666',
             }} />
-            {connected ? 'Live' : 'Connecting...'}
+            {connected ? 'LIVE' : 'CONNECTING...'}
           </div>
         </div>
 
         <div style={{ height: 500 }}>
           {logsLoading ? (
-            <div style={{ textAlign: 'center', padding: 40, color: '#8b949e' }}>
+            <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
               Loading logs...
             </div>
           ) : (

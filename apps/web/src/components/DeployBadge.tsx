@@ -5,12 +5,12 @@ interface DeployBadgeProps {
 }
 
 const statusConfig: Record<string, { color: string; bg: string; label: string }> = {
-  pending: { color: '#8b949e', bg: 'rgba(139, 148, 158, 0.15)', label: 'Pending' },
-  building: { color: '#d29922', bg: 'rgba(210, 153, 34, 0.15)', label: 'Building' },
-  running: { color: '#3fb950', bg: 'rgba(63, 185, 80, 0.15)', label: 'Running' },
-  failed: { color: '#f85149', bg: 'rgba(248, 81, 73, 0.15)', label: 'Failed' },
-  rolled_back: { color: '#a371f7', bg: 'rgba(163, 113, 247, 0.15)', label: 'Rolled Back' },
-  never: { color: '#6e7681', bg: 'rgba(110, 118, 129, 0.15)', label: 'Never' },
+  pending: { color: '#1a1a1a', bg: '#ffffff', label: 'PENDING' },
+  building: { color: '#1a1a1a', bg: '#ffffff', label: 'BUILDING' },
+  running: { color: '#ffffff', bg: '#1a1a1a', label: 'RUNNING' },
+  failed: { color: '#ffffff', bg: '#1a1a1a', label: 'FAILED' },
+  rolled_back: { color: '#ffffff', bg: '#1a1a1a', label: 'ROLLED BACK' },
+  never: { color: '#666', bg: '#f5f5f5', label: 'NEVER' },
 };
 
 export default function DeployBadge({ status }: DeployBadgeProps) {
@@ -25,12 +25,15 @@ export default function DeployBadge({ status }: DeployBadgeProps) {
         display: 'inline-flex',
         alignItems: 'center',
         gap: 6,
-        padding: '4px 10px',
-        borderRadius: 16,
+        padding: '6px 12px',
+        border: '2px solid #1a1a1a',
         background: config.bg,
         color: config.color,
-        fontSize: 12,
-        fontWeight: 500,
+        fontSize: 11,
+        fontWeight: 800,
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        boxShadow: isAnimating ? '2px 2px 0 #1a1a1a' : '1px 1px 0 #1a1a1a',
       }}
     >
       {isAnimating && (
@@ -40,7 +43,6 @@ export default function DeployBadge({ status }: DeployBadgeProps) {
           style={{
             width: 8,
             height: 8,
-            borderRadius: '50%',
             border: `2px solid ${config.color}`,
             borderTopColor: 'transparent',
           }}
@@ -53,7 +55,6 @@ export default function DeployBadge({ status }: DeployBadgeProps) {
           style={{
             width: 6,
             height: 6,
-            borderRadius: '50%',
             background: config.color,
           }}
         />

@@ -52,17 +52,30 @@ export default function Logs() {
     // The LogViewer handles this internally via auto-scroll
   }
 
+  const selectStyle: React.CSSProperties = {
+    padding: '10px 14px',
+    border: '2px solid #1a1a1a',
+    background: '#f5f5f5',
+    color: '#1a1a1a',
+    fontSize: 13,
+    fontWeight: 700,
+    outline: 'none',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    minWidth: 120,
+  };
+
   return (
     <div>
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        style={{ marginBottom: 24 }}
+        style={{ marginBottom: 36 }}
       >
-        <h1 style={{ fontSize: 28, fontWeight: 700, color: '#f0f6fc', marginBottom: 8 }}>
-          Logs
+        <h1 style={{ fontSize: 36, fontWeight: 800, color: '#1a1a1a', marginBottom: 8, letterSpacing: '-1px' }}>
+          LOGS
         </h1>
-        <p style={{ color: '#8b949e' }}>
+        <p style={{ color: '#666', fontWeight: 600, fontSize: 14 }}>
           Real-time system logs and build output
         </p>
       </motion.div>
@@ -73,32 +86,24 @@ export default function Logs() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
         style={{
-          background: '#161b22',
-          border: '1px solid #30363d',
-          borderRadius: 12,
-          padding: 16,
-          marginBottom: 16,
+          background: '#ffffff',
+          border: '3px solid #1a1a1a',
+          padding: 20,
+          marginBottom: 20,
+          boxShadow: '4px 4px 0 #1a1a1a',
         }}
       >
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div>
-            <label style={{ display: 'block', color: '#8b949e', fontSize: 12, marginBottom: 4 }}>
+            <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 6, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Category
             </label>
             <select
               value={filters.category}
               onChange={(e) => setFilters({ ...filters, category: e.target.value })}
-              style={{
-                padding: '8px 12px',
-                borderRadius: 6,
-                border: '1px solid #30363d',
-                background: '#0d1117',
-                color: '#f0f6fc',
-                fontSize: 13,
-                minWidth: 120,
-              }}
+              style={selectStyle}
             >
-              <option value="">All</option>
+              <option value="">All Categories</option>
               <option value="build">Build</option>
               <option value="network">Network</option>
               <option value="docker">Docker</option>
@@ -107,23 +112,15 @@ export default function Logs() {
           </div>
 
           <div>
-            <label style={{ display: 'block', color: '#8b949e', fontSize: 12, marginBottom: 4 }}>
+            <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 6, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Level
             </label>
             <select
               value={filters.level}
               onChange={(e) => setFilters({ ...filters, level: e.target.value })}
-              style={{
-                padding: '8px 12px',
-                borderRadius: 6,
-                border: '1px solid #30363d',
-                background: '#0d1117',
-                color: '#f0f6fc',
-                fontSize: 13,
-                minWidth: 100,
-              }}
+              style={selectStyle}
             >
-              <option value="">All</option>
+              <option value="">All Levels</option>
               <option value="info">Info</option>
               <option value="warn">Warning</option>
               <option value="error">Error</option>
@@ -131,20 +128,13 @@ export default function Logs() {
           </div>
 
           <div>
-            <label style={{ display: 'block', color: '#8b949e', fontSize: 12, marginBottom: 4 }}>
+            <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 6, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Show
             </label>
             <select
               value={filters.limit}
               onChange={(e) => setFilters({ ...filters, limit: parseInt(e.target.value, 10) })}
-              style={{
-                padding: '8px 12px',
-                borderRadius: 6,
-                border: '1px solid #30363d',
-                background: '#0d1117',
-                color: '#f0f6fc',
-                fontSize: 13,
-              }}
+              style={selectStyle}
             >
               <option value="50">50 lines</option>
               <option value="100">100 lines</option>
@@ -153,28 +143,48 @@ export default function Logs() {
             </select>
           </div>
 
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
             <button
               onClick={loadLogs}
               style={{
-                padding: '8px 16px',
-                borderRadius: 6,
-                border: '1px solid #30363d',
-                background: 'transparent',
-                color: '#c9d1d9',
-                fontSize: 13,
+                padding: '10px 20px',
+                border: '2px solid #1a1a1a',
+                background: '#ffffff',
+                color: '#1a1a1a',
+                fontSize: 12,
+                fontWeight: 800,
                 cursor: 'pointer',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                boxShadow: '3px 3px 0 #1a1a1a',
+                transition: 'all 0.1s ease',
+                fontFamily: 'inherit',
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = '#1a1a1a';
+                e.currentTarget.style.color = '#ffffff';
+                e.currentTarget.style.boxShadow = '1px 1px 0 #1a1a1a';
+                e.currentTarget.style.transform = 'translate(2px, 2px)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = '#ffffff';
+                e.currentTarget.style.color = '#1a1a1a';
+                e.currentTarget.style.boxShadow = '3px 3px 0 #1a1a1a';
+                e.currentTarget.style.transform = 'translate(0, 0)';
               }}
             >
               Refresh
             </button>
 
             <div style={{
-              padding: '8px 12px',
-              borderRadius: 6,
-              background: connected ? 'rgba(63, 185, 80, 0.15)' : 'rgba(139, 148, 158, 0.15)',
-              color: connected ? '#3fb950' : '#8b949e',
-              fontSize: 13,
+              padding: '10px 14px',
+              border: '2px solid #1a1a1a',
+              background: connected ? '#1a1a1a' : '#ffffff',
+              color: connected ? '#ffffff' : '#666',
+              fontSize: 11,
+              fontWeight: 800,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
               display: 'flex',
               alignItems: 'center',
               gap: 6,
@@ -182,10 +192,9 @@ export default function Logs() {
               <span style={{
                 width: 8,
                 height: 8,
-                borderRadius: '50%',
-                background: connected ? '#3fb950' : '#8b949e',
+                background: connected ? '#ffffff' : '#666',
               }} />
-              {connected ? 'Live' : 'Offline'}
+              {connected ? 'LIVE' : 'OFFLINE'}
             </div>
           </div>
         </div>
@@ -197,16 +206,14 @@ export default function Logs() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
         style={{
-          background: '#161b22',
-          border: '1px solid #30363d',
-          borderRadius: 12,
-          padding: 16,
-          height: 'calc(100vh - 280px)',
+          border: '3px solid #1a1a1a',
+          boxShadow: '4px 4px 0 #1a1a1a',
+          height: 'calc(100vh - 320px)',
           minHeight: 400,
         }}
       >
         {loading ? (
-          <div style={{ textAlign: 'center', padding: 60, color: '#8b949e' }}>
+          <div style={{ textAlign: 'center', padding: 60, color: '#666', fontWeight: 600, background: '#f5f5f5', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             Loading logs...
           </div>
         ) : (

@@ -80,9 +80,48 @@ export default function Settings({ user }: SettingsProps) {
     }
   }
 
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '12px 14px',
+    border: '2px solid #1a1a1a',
+    background: '#f5f5f5',
+    color: '#1a1a1a',
+    fontSize: 14,
+    fontWeight: 600,
+    outline: 'none',
+    fontFamily: 'inherit',
+  };
+
+  const selectStyle: React.CSSProperties = {
+    padding: '10px 14px',
+    border: '2px solid #1a1a1a',
+    background: '#f5f5f5',
+    color: '#1a1a1a',
+    fontSize: 13,
+    fontWeight: 700,
+    outline: 'none',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+  };
+
+  const buttonStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '14px',
+    border: '3px solid #1a1a1a',
+    background: saving ? '#f5f5f5' : '#1a1a1a',
+    color: saving ? '#666' : '#ffffff',
+    fontWeight: 800,
+    cursor: saving ? 'not-allowed' : 'pointer',
+    fontSize: 13,
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+    boxShadow: saving ? '1px 1px 0 #1a1a1a' : '4px 4px 0 #1a1a1a',
+    transition: 'all 0.1s ease',
+  };
+
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: 60, color: '#8b949e' }}>
+      <div style={{ textAlign: 'center', padding: 60, color: '#666', fontWeight: 600 }}>
         Loading settings...
       </div>
     );
@@ -90,7 +129,7 @@ export default function Settings({ user }: SettingsProps) {
 
   if (!isAdmin) {
     return (
-      <div style={{ textAlign: 'center', padding: 60, color: '#8b949e' }}>
+      <div style={{ textAlign: 'center', padding: 60, color: '#666', fontWeight: 600 }}>
         You do not have permission to access settings.
       </div>
     );
@@ -101,12 +140,12 @@ export default function Settings({ user }: SettingsProps) {
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        style={{ marginBottom: 32 }}
+        style={{ marginBottom: 40 }}
       >
-        <h1 style={{ fontSize: 28, fontWeight: 700, color: '#f0f6fc', marginBottom: 8 }}>
-          Settings
+        <h1 style={{ fontSize: 36, fontWeight: 800, color: '#1a1a1a', marginBottom: 8, letterSpacing: '-1px' }}>
+          SETTINGS
         </h1>
-        <p style={{ color: '#8b949e' }}>
+        <p style={{ color: '#666', fontWeight: 600, fontSize: 14 }}>
           Configure deployment scheduler and manage users
         </p>
       </motion.div>
@@ -116,11 +155,13 @@ export default function Settings({ user }: SettingsProps) {
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           style={{
-            padding: 12,
-            borderRadius: 8,
-            marginBottom: 24,
-            background: message.type === 'success' ? 'rgba(63, 185, 80, 0.15)' : 'rgba(248, 81, 73, 0.15)',
-            color: message.type === 'success' ? '#3fb950' : '#f85149',
+            padding: '16px 20px',
+            border: '3px solid #1a1a1a',
+            marginBottom: 30,
+            background: message.type === 'success' ? '#ffffff' : '#f5f5f5',
+            color: message.type === 'success' ? '#1a1a1a' : '#1a1a1a',
+            fontWeight: 700,
+            boxShadow: '4px 4px 0 #1a1a1a',
           }}
         >
           {message.text}
@@ -134,18 +175,18 @@ export default function Settings({ user }: SettingsProps) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
           style={{
-            background: '#161b22',
-            border: '1px solid #30363d',
-            borderRadius: 12,
-            padding: 20,
+            background: '#ffffff',
+            border: '3px solid #1a1a1a',
+            padding: 28,
+            boxShadow: '4px 4px 0 #1a1a1a',
           }}
         >
-          <h2 style={{ fontSize: 18, fontWeight: 600, color: '#f0f6fc', marginBottom: 20 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginBottom: 24, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             General Settings
           </h2>
 
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ display: 'block', color: '#8b949e', fontSize: 13, marginBottom: 6 }}>
+          <div style={{ marginBottom: 24 }}>
+            <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Poll Interval (seconds)
             </label>
             <input
@@ -154,17 +195,9 @@ export default function Settings({ user }: SettingsProps) {
               max="3600"
               value={settings.poll_interval_seconds}
               onChange={(e) => setSettings({ ...settings, poll_interval_seconds: parseInt(e.target.value, 10) || 60 })}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                borderRadius: 6,
-                border: '1px solid #30363d',
-                background: '#0d1117',
-                color: '#f0f6fc',
-                fontSize: 14,
-              }}
+              style={inputStyle}
             />
-            <p style={{ color: '#6e7681', fontSize: 12, marginTop: 6 }}>
+            <p style={{ color: '#888', fontSize: 11, marginTop: 8, fontWeight: 600 }}>
               How often to check GitHub for new releases or commits
             </p>
           </div>
@@ -172,16 +205,7 @@ export default function Settings({ user }: SettingsProps) {
           <button
             onClick={handleSaveSettings}
             disabled={saving}
-            style={{
-              width: '100%',
-              padding: '10px',
-              borderRadius: 6,
-              border: 'none',
-              background: saving ? '#484f58' : '#6366f1',
-              color: 'white',
-              fontWeight: 600,
-              cursor: saving ? 'not-allowed' : 'pointer',
-            }}
+            style={buttonStyle}
           >
             {saving ? 'Saving...' : 'Save Settings'}
           </button>
@@ -193,13 +217,13 @@ export default function Settings({ user }: SettingsProps) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
           style={{
-            background: '#161b22',
-            border: '1px solid #30363d',
-            borderRadius: 12,
-            padding: 20,
+            background: '#ffffff',
+            border: '3px solid #1a1a1a',
+            padding: 28,
+            boxShadow: '4px 4px 0 #1a1a1a',
           }}
         >
-          <h2 style={{ fontSize: 18, fontWeight: 600, color: '#f0f6fc', marginBottom: 20 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginBottom: 24, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             Environment
           </h2>
 
@@ -207,49 +231,53 @@ export default function Settings({ user }: SettingsProps) {
             <div style={{
               display: 'flex',
               justifyContent: 'space-between',
+              alignItems: 'center',
               padding: 12,
-              background: '#0d1117',
-              borderRadius: 8,
+              border: '2px solid #1a1a1a',
+              background: '#f5f5f5',
             }}>
-              <span style={{ color: '#8b949e' }}>Node Environment</span>
-              <span style={{ color: '#f0f6fc' }}>{import.meta.env.MODE || 'development'}</span>
+              <span style={{ color: '#666', fontWeight: 700 }}>Node Environment</span>
+              <span style={{ color: '#1a1a1a', fontWeight: 700 }}>{import.meta.env.MODE || 'development'}</span>
             </div>
 
             <div style={{
               display: 'flex',
               justifyContent: 'space-between',
+              alignItems: 'center',
               padding: 12,
-              background: '#0d1117',
-              borderRadius: 8,
+              border: '2px solid #1a1a1a',
+              background: '#f5f5f5',
             }}>
-              <span style={{ color: '#8b949e' }}>GitHub OAuth</span>
-              <span style={{ color: import.meta.env.GITHUB_APP_CLIENT_ID ? '#3fb950' : '#f85149' }}>
-                {import.meta.env.GITHUB_APP_CLIENT_ID ? 'Configured' : 'Not configured'}
+              <span style={{ color: '#666', fontWeight: 700 }}>GitHub OAuth</span>
+              <span style={{ color: import.meta.env.GITHUB_APP_CLIENT_ID ? '#1a1a1a' : '#666', fontWeight: 700 }}>
+                {import.meta.env.GITHUB_APP_CLIENT_ID ? 'Configured' : 'Not Configured'}
               </span>
             </div>
 
             <div style={{
               display: 'flex',
               justifyContent: 'space-between',
+              alignItems: 'center',
               padding: 12,
-              background: '#0d1117',
-              borderRadius: 8,
+              border: '2px solid #1a1a1a',
+              background: '#f5f5f5',
             }}>
-              <span style={{ color: '#8b949e' }}>Localtonet</span>
-              <span style={{ color: import.meta.env.LOCALTONET_AUTH_TOKEN ? '#3fb950' : '#f85149' }}>
-                {import.meta.env.LOCALTONET_AUTH_TOKEN ? 'Configured' : 'Not configured'}
+              <span style={{ color: '#666', fontWeight: 700 }}>Localtonet</span>
+              <span style={{ color: import.meta.env.LOCALTONET_AUTH_TOKEN ? '#1a1a1a' : '#666', fontWeight: 700 }}>
+                {import.meta.env.LOCALTONET_AUTH_TOKEN ? 'Configured' : 'Not Configured'}
               </span>
             </div>
 
             <div style={{
               display: 'flex',
               justifyContent: 'space-between',
+              alignItems: 'center',
               padding: 12,
-              background: '#0d1117',
-              borderRadius: 8,
+              border: '2px solid #1a1a1a',
+              background: '#f5f5f5',
             }}>
-              <span style={{ color: '#8b949e' }}>Database</span>
-              <span style={{ color: '#3fb950' }}>Connected</span>
+              <span style={{ color: '#666', fontWeight: 700 }}>Database</span>
+              <span style={{ color: '#1a1a1a', fontWeight: 700 }}>Connected</span>
             </div>
           </div>
         </motion.div>
@@ -261,77 +289,72 @@ export default function Settings({ user }: SettingsProps) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
         style={{
-          background: '#161b22',
-          border: '1px solid #30363d',
-          borderRadius: 12,
-          padding: 20,
-          marginTop: 24,
+          background: '#ffffff',
+          border: '3px solid #1a1a1a',
+          padding: 28,
+          marginBottom: 24,
+          boxShadow: '4px 4px 0 #1a1a1a',
         }}
       >
-        <h2 style={{ fontSize: 18, fontWeight: 600, color: '#f0f6fc', marginBottom: 20 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginBottom: 24, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           User Management
         </h2>
 
         {users.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 40, color: '#8b949e' }}>
+          <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
             No users yet
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid #30363d' }}>
-                  <th style={{ textAlign: 'left', padding: '12px', color: '#8b949e', fontSize: 12, fontWeight: 500 }}>
+                <tr style={{ borderBottom: '3px solid #1a1a1a' }}>
+                  <th style={{ textAlign: 'left', padding: '14px 12px', color: '#1a1a1a', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     User
                   </th>
-                  <th style={{ textAlign: 'left', padding: '12px', color: '#8b949e', fontSize: 12, fontWeight: 500 }}>
+                  <th style={{ textAlign: 'left', padding: '14px 12px', color: '#1a1a1a', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     Role
                   </th>
-                  <th style={{ textAlign: 'left', padding: '12px', color: '#8b949e', fontSize: 12, fontWeight: 500 }}>
+                  <th style={{ textAlign: 'left', padding: '14px 12px', color: '#1a1a1a', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     Joined
                   </th>
-                  <th style={{ textAlign: 'left', padding: '12px', color: '#8b949e', fontSize: 12, fontWeight: 500 }}>
+                  <th style={{ textAlign: 'left', padding: '14px 12px', color: '#1a1a1a', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {users.map((u) => (
-                  <tr key={u.id} style={{ borderBottom: '1px solid #21262d' }}>
-                    <td style={{ padding: '12px' }}>
+                  <tr key={u.id} style={{ borderBottom: '2px solid #1a1a1a' }}>
+                    <td style={{ padding: '16px 12px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         <div style={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: '50%',
-                          background: '#30363d',
+                          width: 36,
+                          height: 36,
+                          border: '2px solid #1a1a1a',
+                          background: '#ffffff',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          fontWeight: 600,
-                          color: '#f0f6fc',
+                          fontWeight: 800,
+                          color: '#1a1a1a',
+                          fontSize: 14,
                         }}>
                           {u.github_login.charAt(0).toUpperCase()}
                         </div>
-                        <span style={{ color: '#f0f6fc', fontWeight: 500 }}>
+                        <span style={{ color: '#1a1a1a', fontWeight: 700 }}>
                           {u.github_login}
                         </span>
                       </div>
                     </td>
-                    <td style={{ padding: '12px' }}>
+                    <td style={{ padding: '16px 12px' }}>
                       <select
                         value={u.role}
                         onChange={(e) => handleUpdateRole(u.id, e.target.value)}
                         disabled={u.id === user.id}
                         style={{
-                          padding: '6px 10px',
-                          borderRadius: 6,
-                          border: '1px solid #30363d',
-                          background: '#0d1117',
-                          color: '#f0f6fc',
-                          fontSize: 13,
+                          ...selectStyle,
                           cursor: u.id === user.id ? 'not-allowed' : 'pointer',
-                          opacity: u.id === user.id ? 0.5 : 1,
                         }}
                       >
                         <option value="admin">Admin</option>
@@ -339,12 +362,14 @@ export default function Settings({ user }: SettingsProps) {
                         <option value="viewer">Viewer</option>
                       </select>
                     </td>
-                    <td style={{ padding: '12px', color: '#8b949e', fontSize: 13 }}>
+                    <td style={{ padding: '16px 12px', color: '#666', fontSize: 13, fontWeight: 600 }}>
                       {new Date(u.created_at).toLocaleDateString()}
                     </td>
-                    <td style={{ padding: '12px' }}>
+                    <td style={{ padding: '16px 12px' }}>
                       {u.id === user.id && (
-                        <span style={{ color: '#6e7681', fontSize: 12 }}>Current user</span>
+                        <span style={{ color: '#1a1a1a', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          Current
+                        </span>
                       )}
                     </td>
                   </tr>

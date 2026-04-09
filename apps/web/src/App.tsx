@@ -41,14 +41,13 @@ export default function App() {
         alignItems: 'center',
         justifyContent: 'center',
         height: '100vh',
-        background: '#0d1117',
+        background: '#ffffff',
       }}>
         <div style={{
           width: 40,
           height: 40,
-          border: '3px solid #30363d',
-          borderTopColor: '#6366f1',
-          borderRadius: '50%',
+          border: '2px solid #1a1a1a',
+          background: '#1a1a1a',
           animation: 'spin 1s linear infinite',
         }} />
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -67,8 +66,8 @@ export default function App() {
         <main style={{
           flex: 1,
           marginLeft: 260,
-          padding: '24px',
-          background: '#0d1117',
+          padding: '32px',
+          background: '#ffffff',
         }}>
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />

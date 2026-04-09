@@ -12,47 +12,54 @@ interface RepoCardProps {
 export default function RepoCard({ repo, onDeploy, canDeploy = false }: RepoCardProps) {
   return (
     <motion.div
-      whileHover={{ y: -2, boxShadow: '0 8px 30px rgba(99, 102, 241, 0.15)' }}
+      whileHover={{ y: -2, boxShadow: '6px 6px 0 #1a1a1a' }}
       style={{
-        background: '#161b22',
-        border: '1px solid #30363d',
-        borderRadius: 12,
-        padding: 20,
-        transition: 'all 0.2s ease',
+        background: '#ffffff',
+        border: '3px solid #1a1a1a',
+        padding: 24,
+        boxShadow: '4px 4px 0 #1a1a1a',
+        transition: 'all 0.1s ease',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
         <div>
           <Link
             to={`/repositories/${repo.id}`}
             style={{
-              color: '#f0f6fc',
+              color: '#1a1a1a',
               textDecoration: 'none',
-              fontWeight: 600,
+              fontWeight: 800,
               fontSize: 16,
+              letterSpacing: '-0.3px',
             }}
           >
             {repo.full_name}
           </Link>
-          <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <span style={{
-              fontSize: 12,
-              padding: '2px 8px',
-              borderRadius: 12,
-              background: repo.deploy_mode === 'release' ? 'rgba(34, 211, 238, 0.15)' : 'rgba(99, 102, 241, 0.15)',
-              color: repo.deploy_mode === 'release' ? '#22d3ee' : '#6366f1',
+              fontSize: 11,
+              padding: '4px 10px',
+              border: '2px solid #1a1a1a',
+              background: repo.deploy_mode === 'release' ? '#1a1a1a' : '#ffffff',
+              color: repo.deploy_mode === 'release' ? '#ffffff' : '#1a1a1a',
+              fontWeight: 800,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
             }}>
               {repo.deploy_mode}
             </span>
             {repo.private && (
               <span style={{
-                fontSize: 12,
-                padding: '2px 8px',
-                borderRadius: 12,
-                background: 'rgba(248, 81, 73, 0.15)',
-                color: '#f85149',
+                fontSize: 11,
+                padding: '4px 10px',
+                border: '2px solid #1a1a1a',
+                background: '#ffffff',
+                color: '#1a1a1a',
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
               }}>
-                private
+                Private
               </span>
             )}
           </div>
@@ -63,11 +70,11 @@ export default function RepoCard({ repo, onDeploy, canDeploy = false }: RepoCard
       {repo.last_deployed_ref && (
         <div style={{
           fontSize: 13,
-          color: '#8b949e',
-          marginBottom: 8,
+          color: '#666',
+          marginBottom: 12,
           fontFamily: 'JetBrains Mono, monospace',
         }}>
-          <span style={{ color: '#6e7681' }}>Last:</span> {repo.last_deployed_ref.substring(0, 12)}...
+          <span style={{ color: '#1a1a1a', fontWeight: 700 }}>LAST:</span> {repo.last_deployed_ref.substring(0, 12)}...
         </div>
       )}
 
@@ -81,12 +88,13 @@ export default function RepoCard({ repo, onDeploy, canDeploy = false }: RepoCard
             alignItems: 'center',
             gap: 4,
             fontSize: 13,
-            color: '#22d3ee',
-            textDecoration: 'none',
-            marginBottom: 12,
+            color: '#1a1a1a',
+            textDecoration: 'underline',
+            marginBottom: 16,
+            fontWeight: 700,
           }}
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
             <polyline points="15 3 21 3 21 9" />
             <line x1="10" y1="14" x2="21" y2="3" />
@@ -95,20 +103,31 @@ export default function RepoCard({ repo, onDeploy, canDeploy = false }: RepoCard
         </a>
       )}
 
-      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+      <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
         <Link
           to={`/repositories/${repo.id}`}
           style={{
             flex: 1,
-            padding: '8px 12px',
-            borderRadius: 6,
-            border: '1px solid #30363d',
-            background: 'transparent',
-            color: '#c9d1d9',
+            padding: '12px 16px',
+            border: '2px solid #1a1a1a',
+            background: '#ffffff',
+            color: '#1a1a1a',
             textDecoration: 'none',
             textAlign: 'center',
             fontSize: 13,
-            fontWeight: 500,
+            fontWeight: 800,
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+            boxShadow: '3px 3px 0 #1a1a1a',
+            transition: 'all 0.1s ease',
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.boxShadow = '1px 1px 0 #1a1a1a';
+            e.currentTarget.style.transform = 'translate(2px, 2px)';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.boxShadow = '3px 3px 0 #1a1a1a';
+            e.currentTarget.style.transform = 'translate(0, 0)';
           }}
         >
           View
@@ -118,17 +137,28 @@ export default function RepoCard({ repo, onDeploy, canDeploy = false }: RepoCard
             onClick={() => onDeploy(repo.id)}
             style={{
               flex: 1,
-              padding: '8px 12px',
-              borderRadius: 6,
-              border: 'none',
-              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-              color: 'white',
+              padding: '12px 16px',
+              border: '2px solid #1a1a1a',
+              background: '#1a1a1a',
+              color: '#ffffff',
               fontSize: 13,
-              fontWeight: 500,
+              fontWeight: 800,
               cursor: 'pointer',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              boxShadow: '3px 3px 0 #1a1a1a',
+              transition: 'all 0.1s ease',
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.boxShadow = '1px 1px 0 #1a1a1a';
+              e.currentTarget.style.transform = 'translate(2px, 2px)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.boxShadow = '3px 3px 0 #1a1a1a';
+              e.currentTarget.style.transform = 'translate(0, 0)';
             }}
           >
-            Deploy Now
+            Deploy
           </button>
         )}
       </div>

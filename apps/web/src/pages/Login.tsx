@@ -11,29 +11,20 @@ export default function Login(_props: LoginProps) {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: '#0d1117',
+      background: '#ffffff',
       position: 'relative',
       overflow: 'hidden',
     }}>
-      {/* Animated background */}
-      <div style={{
-        position: 'absolute',
-        inset: 0,
-        background: `
-          radial-gradient(circle at 20% 50%, rgba(99, 102, 241, 0.1) 0%, transparent 50%),
-          radial-gradient(circle at 80% 50%, rgba(34, 211, 238, 0.1) 0%, transparent 50%)
-        `,
-      }} />
-
-      {/* Grid pattern */}
+      {/* Grid pattern - minimalist brutalist style */}
       <div style={{
         position: 'absolute',
         inset: 0,
         backgroundImage: `
-          linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px)
+          linear-gradient(#1a1a1a 1px, transparent 1px),
+          linear-gradient(90deg, #1a1a1a 1px, transparent 1px)
         `,
-        backgroundSize: '50px 50px',
+        backgroundSize: '40px 40px',
+        opacity: 0.05,
       }} />
 
       <motion.div
@@ -41,15 +32,14 @@ export default function Login(_props: LoginProps) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
         style={{
-          background: '#161b22',
-          border: '1px solid #30363d',
-          borderRadius: 16,
+          background: '#ffffff',
+          border: '4px solid #1a1a1a',
           padding: 48,
           textAlign: 'center',
-          maxWidth: 400,
+          maxWidth: 420,
           width: '90%',
           position: 'relative',
-          boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+          boxShadow: '8px 8px 0 #1a1a1a',
         }}
       >
         {/* Logo */}
@@ -61,33 +51,34 @@ export default function Login(_props: LoginProps) {
             width: 80,
             height: 80,
             margin: '0 auto 24px',
-            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-            borderRadius: 20,
+            background: '#1a1a1a',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 10px 40px rgba(99, 102, 241, 0.4)',
+            boxShadow: '4px 4px 0 #1a1a1a',
           }}
         >
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5">
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
           </svg>
         </motion.div>
 
         <h1 style={{
-          fontSize: 28,
-          fontWeight: 700,
-          color: '#f0f6fc',
+          fontSize: 32,
+          fontWeight: 800,
+          color: '#1a1a1a',
           marginBottom: 8,
+          letterSpacing: '-1px',
         }}>
-          togit-deployer
+          TOGIT DEPLOYER
         </h1>
 
         <p style={{
-          color: '#8b949e',
-          fontSize: 15,
+          color: '#666',
+          fontSize: 14,
           marginBottom: 32,
           lineHeight: 1.6,
+          fontWeight: 500,
         }}>
           Deploy your GitHub repositories with Docker and expose them to the internet via Localtonet tunnels.
         </p>
@@ -101,14 +92,25 @@ export default function Login(_props: LoginProps) {
             alignItems: 'center',
             justifyContent: 'center',
             gap: 12,
-            padding: '14px 28px',
-            background: '#f0f6fc',
-            color: '#0d1117',
-            borderRadius: 8,
+            padding: '16px 32px',
+            background: '#1a1a1a',
+            color: '#ffffff',
             textDecoration: 'none',
-            fontWeight: 600,
-            fontSize: 15,
-            transition: 'all 0.2s ease',
+            fontWeight: 800,
+            fontSize: 14,
+            letterSpacing: '1px',
+            textTransform: 'uppercase',
+            border: '3px solid #1a1a1a',
+            boxShadow: '6px 6px 0 #1a1a1a',
+            transition: 'all 0.1s ease',
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.boxShadow = '3px 3px 0 #1a1a1a';
+            e.currentTarget.style.transform = 'translate(3px, 3px)';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.boxShadow = '6px 6px 0 #1a1a1a';
+            e.currentTarget.style.transform = 'translate(0, 0)';
           }}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -118,11 +120,13 @@ export default function Login(_props: LoginProps) {
         </motion.a>
 
         <p style={{
-          marginTop: 24,
-          fontSize: 12,
-          color: '#6e7681',
+          marginTop: 28,
+          fontSize: 11,
+          color: '#999',
+          fontWeight: 600,
+          letterSpacing: '0.3px',
         }}>
-          By signing in, you agree to let togit-deployer access your GitHub repositories.
+          By signing in, you agree to let TOGIT DEPLOYER access your GitHub repositories.
         </p>
       </motion.div>
     </div>
