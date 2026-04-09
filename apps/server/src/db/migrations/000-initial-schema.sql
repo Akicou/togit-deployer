@@ -88,8 +88,14 @@ CREATE TABLE IF NOT EXISTS settings (
   poll_interval_seconds INTEGER NOT NULL DEFAULT 30
 );
 
--- Insert default settings
-INSERT INTO settings (poll_interval_seconds) VALUES (30);
+-- Handle case where table existed from a prior partial migration
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS poll_interval_seconds INTEGER DEFAULT 30;
+ALTER TABLE settings ALTER COLUMN poll_interval_seconds SET NOT NULL;
+ALTER TABLE settings ALTER COLUMN poll_interval_seconds SET DEFAULT 30;
+
+-- Insert default only if table is empty
+INSERT INTO settings (poll_interval_seconds)
+SELECT 30 WHERE NOT EXISTS (SELECT 1 FROM settings LIMIT 1);
 
 -- User repo permissions table
 CREATE TABLE IF NOT EXISTS user_repo_permissions (
