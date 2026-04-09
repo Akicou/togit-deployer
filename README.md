@@ -27,6 +27,24 @@ Built with **Bun**, **React**, **PostgreSQL**, and **Docker**.
 | [PostgreSQL](https://postgresql.org/) | Or use the included Compose file |
 | [Localtonet](https://localtonet.com/) | Free account required for tunnels |
 
+### Fedora setup
+
+```bash
+# PostgreSQL
+sudo dnf install postgresql-server postgresql-contrib
+sudo postgresql-setup --initdb --unit postgresql
+sudo systemctl enable --now postgresql
+
+# Docker
+sudo dnf config-manager addrepo --from-repofile https://download.docker.com/linux/fedora/docker-ce.repo
+sudo dnf install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+
+# Add your user to the docker group (avoids needing sudo)
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
 ---
 
 ## Quick Start
@@ -106,11 +124,20 @@ togit-deployer/
 ```bash
 bun run dev        # Dev mode — server + frontend with hot reload
 bun run build      # Build frontend for production
-bun run start      # Start production server
 bun run migrate    # Run database migrations manually
 ```
 
 Migrations also run automatically on every server startup.
+
+### Production (with tunnel)
+
+Use `start.sh` to build the frontend and start both the backend and the Vite preview server:
+
+```bash
+./start.sh
+```
+
+> **Note:** `docker compose` (no hyphen) is the correct command — `docker-compose` is the old standalone binary and is not installed.
 
 ---
 
@@ -199,11 +226,25 @@ Rollback to last known-good deployment
 
 ## Troubleshooting
 
-**Docker not running**
+**Docker daemon not running**
 ```
-Error: Docker is not running. Please start Docker.
+dial unix /var/run/docker.sock: connect: no such file or directory
 ```
-Start Docker Desktop or the Docker daemon.
+```bash
+sudo systemctl start docker
+```
+
+**Docker permission denied**
+```
+permission denied while trying to connect to the Docker daemon socket
+```
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+**`docker-compose` command not found**
+Use `docker compose` (space, no hyphen) — it is a built-in plugin in Docker CE v2+.
 
 **Localtonet not installed**
 The server will attempt to auto-install Localtonet on startup. To install manually:
@@ -213,6 +254,7 @@ curl -fsSL https://localtonet.com/install.sh | sh
 
 **Database connection failed**
 ```bash
+sudo systemctl start postgresql
 docker compose up -d postgres
 ```
 
