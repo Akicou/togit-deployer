@@ -8,7 +8,6 @@ import { checkLocaltonetInstalled, installLocaltonet } from './daemon/localtonet
 import { checkDockerRunning, cleanupInterruptedBuilds, pruneUnusedImages } from './daemon/deployer.js';
 import { startScheduler, stopScheduler } from './daemon/scheduler.js';
 import { cleanupExpiredOAuthStates } from './utils/oauth-states.js';
-import { loadEnvFiles } from './utils/env.js';
 import { parseCookies } from './utils/cookie.js';
 import { handleWSOpen, handleWSClose } from './logger/index.js';
 import type { WSData } from './logger/index.js';
@@ -395,13 +394,13 @@ async function startup(): Promise<void> {
   }
   console.log('✅ Docker is running');
 
-  // Check Localtonet
+  // Check Localtonet (env var check only; no network call)
   console.log('\n🌐 Checking Localtonet...');
-  const localtonetInstalled = await checkLocaltonetInstalled();
+  const localtonetInstalled = checkLocaltonetInstalled();
   if (!localtonetInstalled) {
-    console.warn('⚠️  LOCALTONET_AUTH_TOKEN not configured. Tunnel features will be unavailable.');
+    console.warn('⚠️  LOCALTONET_AUTH_TOKEN not set in .env. Tunnel features will be unavailable.');
   } else {
-    console.log('✅ Localtonet token configured');
+    console.log('✅ Localtonet token is configured');
   }
 
   // Clean up interrupted deployments

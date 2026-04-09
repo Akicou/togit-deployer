@@ -10,28 +10,16 @@ interface LocaltonetTunnel {
 }
 
 /**
- * Checks if Localtonet is configured and usable.
- * Since Localtonet uses the HTTP API (no CLI), we verify
- * the token is set and perform a lightweight connectivity test.
+ * Checks if Localtonet is configured.
+ * Only verifies the env var is set — no network call at startup.
+ * Use testLocaltonetConnection() to verify the token actually works.
  */
-export async function checkLocaltonetInstalled(): Promise<boolean> {
-  if (!process.env.LOCALTONET_AUTH_TOKEN) return false;
-
-  // Do a lightweight test to verify the token actually works
-  try {
-    const response = await fetch(`${LOCALTONET_API}/tunnels`, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${process.env.LOCALTONET_AUTH_TOKEN}` },
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
+export function checkLocaltonetInstalled(): boolean {
+  return !!process.env.LOCALTONET_AUTH_TOKEN;
 }
 
 /**
- * Localtonet no longer requires CLI installation — it uses an HTTP API.
- * This function is now a no-op; the check is done via checkLocaltonetInstalled().
+ * Localtonet uses the HTTP API — no CLI installation needed.
  */
 export async function installLocaltonet(): Promise<void> {
   // No installation needed — Localtonet uses a REST API.
@@ -51,8 +39,6 @@ export async function startTunnel(
 
   logNetwork(`Creating Localtonet tunnel for port ${localPort}`, { deployment_id: deploymentId });
 
-  // API: POST /tunnels/http/random-subdomain
-  // Body: { port: number, protocolType: 1 } (authToken in header only)
   const response = await fetch(`${LOCALTONET_API}/tunnels/http/random-subdomain`, {
     method: 'POST',
     headers: {
@@ -61,8 +47,8 @@ export async function startTunnel(
     },
     body: JSON.stringify({
       port: localPort,
-      protocolType: 1, // 1 = HTTP
-      name: `togit-deployment-${deploymentId}`, // Optional descriptive name
+      protocolType: 1,
+      name: `togit-deployment-${deploymentId}`,
     }),
   });
 
@@ -181,7 +167,6 @@ export async function getTunnelStatus(tunnelId: string, authToken: string): Prom
   }
 
   try {
-    // API: GET /tunnels/{tunnelId}
     const response = await fetch(`${LOCALTONET_API}/tunnels/${tunnelId}`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${authToken}` },
@@ -222,7 +207,6 @@ export async function testLocaltonetConnection(authToken: string): Promise<{
   }
 
   try {
-    // API: GET /tunnels - returns list of all tunnels (active and inactive)
     const response = await fetch(`${LOCALTONET_API}/tunnels`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${authToken}` },
@@ -234,8 +218,6 @@ export async function testLocaltonetConnection(authToken: string): Promise<{
     }
 
     const data = await response.json() as any[];
-    
-    // Count active tunnels (status === 1 means active)
     const activeCount = data.filter((t: any) => t.status === 1).length;
     
     return { 
