@@ -16,6 +16,87 @@ if (!fs.existsSync(TEMP_DIR)) {
   fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 
+// Clean up interrupted builds and stale containers on startup
+export async function cleanupInterruptedBuilds(): Promise<void> {
+  logSystem('Cleaning up interrupted deployments...');
+
+  try {
+    // Find all deployments stuck in 'building' or 'running' state
+    const staleDeployments = await query<Deployment>(
+      `SELECT * FROM deployments 
+       WHERE status IN ('building', 'running') 
+       ORDER BY id DESC`
+    );
+
+    for (const deployment of staleDeployments.rows) {
+      logSystem(`Cleaning up stale deployment ${deployment.id} (status: ${deployment.status})`);
+
+      // Stop and remove container if it exists
+      if (deployment.container_id) {
+        try {
+          const container = docker.getContainer(deployment.container_id);
+          const containerInfo = await container.inspect() as any;
+          
+          if (containerInfo.State.Running) {
+            await container.stop();
+            logSystem(`Stopped container ${deployment.container_id} from stale deployment ${deployment.id}`);
+          }
+          
+          await container.remove();
+          logSystem(`Removed container ${deployment.container_id} from stale deployment ${deployment.id}`);
+        } catch (err: unknown) {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          if (!errorMsg.includes('No such container')) {
+            logSystem(`Could not remove container ${deployment.container_id}: ${errorMsg}`);
+          }
+        }
+      }
+
+      // Stop Localtonet tunnel if it exists
+      if (deployment.tunnel_url) {
+        try {
+          await stopTunnel(deployment.localtonet_tunnel_id || deployment.id.toString());
+          logSystem(`Stopped tunnel for stale deployment ${deployment.id}`);
+          console.log(`Stopped tunnel for stale deployment ${deployment.id}`);
+        } catch (err: unknown) {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          logSystem(`Could not stop tunnel for deployment ${deployment.id}: ${errorMsg}`);
+        }
+      }
+
+      // Update deployment status to failed
+      await query(
+        `UPDATE deployments 
+         SET status = 'failed', 
+             error_message = $1, 
+             finished_at = NOW()
+         WHERE id = $2`,
+        ['Deployment interrupted by server restart', deployment.id]
+      );
+    }
+
+    // Clean up temporary clone directories from interrupted builds
+    if (fs.existsSync(TEMP_DIR)) {
+      const entries = fs.readdirSync(TEMP_DIR);
+      for (const entry of entries) {
+        const fullPath = path.join(TEMP_DIR, entry);
+        try {
+          fs.rmSync(fullPath, { recursive: true, force: true });
+          logSystem(`Cleaned up temp directory ${fullPath}`);
+        } catch (err: unknown) {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          logSystem(`Could not clean up temp directory ${fullPath}: ${errorMsg}`);
+        }
+      }
+    }
+
+    logSystem(`Cleanup completed. Processed ${staleDeployments.rows.length} stale deployment(s).`);
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    logError(`Cleanup failed: ${errorMsg}`);
+  }
+}
+
 function sanitizeRef(ref: string): string {
   return ref.replace(/[^a-zA-Z0-9_-]/g, '-').substring(0, 128);
 }
@@ -193,25 +274,67 @@ async function buildImage(
   repoId: number
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    docker.buildImage(context, { t: imageName, rm: true }, (err, stream) => {
-      if (err) { reject(err); return; }
-      if (!stream) { reject(new Error('No stream from Docker build')); return; }
-
-      docker.modem.followProgress(
-        stream,
-        (err) => {
-          if (err) reject(err);
-          else {
-            logBuild(`Docker build completed: ${imageName}`, { deployment_id: deploymentId, repo_id: repoId });
-            resolve();
-          }
-        },
-        (event) => {
-          if (event.stream) logBuild(event.stream.trim(), { deployment_id: deploymentId, repo_id: repoId });
-          else if (event.error) logBuild(`Docker build error: ${event.error}`, { deployment_id: deploymentId, repo_id: repoId });
+    // Enable verbose build output with --progress=plain
+    docker.buildImage(
+      context,
+      { 
+        t: imageName, 
+        rm: true,
+        dockerfile: 'Dockerfile',
+        buildargs: {},
+        pull: false,
+        nocache: false,
+      },
+      (err, stream) => {
+        if (err) { 
+          logError(`Docker build stream error: ${err.message}`, { deployment_id: deploymentId, repo_id: repoId });
+          reject(err); 
+          return; 
         }
-      );
-    });
+        if (!stream) { 
+          logError('No stream from Docker build', { deployment_id: deploymentId, repo_id: repoId });
+          reject(new Error('No stream from Docker build')); 
+          return; 
+        }
+
+        let buildSuccess = false;
+        let buildError: Error | null = null;
+
+        docker.modem.followProgress(
+          stream,
+          (err) => {
+            if (err) {
+              const errorMsg = `Docker build failed: ${err.message}`;
+              logError(errorMsg, { deployment_id: deploymentId, repo_id: repoId });
+              reject(err);
+            } else if (buildSuccess) {
+              logBuild(`Docker build completed successfully: ${imageName}`, { deployment_id: deploymentId, repo_id: repoId });
+              resolve();
+            } else if (buildError) {
+              reject(buildError);
+            } else {
+              resolve();
+            }
+          },
+          (event) => {
+            // Log all build events verbosely
+            if (event.stream) {
+              const lines = event.stream.trim().split('\n');
+              for (const line of lines) {
+                if (line) logBuild(line, { deployment_id: deploymentId, repo_id: repoId });
+              }
+            }
+            if (event.error) {
+              buildError = new Error(event.error);
+              logError(`Docker build error: ${event.error}`, { deployment_id: deploymentId, repo_id: repoId });
+            }
+            if (event.status === 'Build complete' || (event.aux && event.aux.ID)) {
+              buildSuccess = true;
+            }
+          }
+        );
+      }
+    );
   });
 }
 

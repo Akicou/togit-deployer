@@ -7,6 +7,7 @@ import { runMigrations } from './db/migrate.js';
 import { checkLocaltonetInstalled, installLocaltonet } from './daemon/localtonet.js';
 import { checkDockerRunning } from './daemon/deployer.js';
 import { startScheduler, stopScheduler } from './daemon/scheduler.js';
+import { cleanupInterruptedBuilds } from './daemon/deployer.js';
 import { handleWSOpen, handleWSClose, handleWSError } from './logger/index.js';
 import type { WSData } from './logger/index.js';
 import { getSession } from './github/oauth.js';
@@ -385,6 +386,11 @@ async function startup(): Promise<void> {
   } else {
     console.log('✅ Localtonet is installed');
   }
+
+  // Clean up interrupted deployments from previous runs
+  console.log('\n🧹 Cleaning up interrupted deployments...');
+  await cleanupInterruptedBuilds();
+  console.log('✅ Cleanup completed');
 
   // Start the scheduler
   console.log('\n⏰ Starting deployment scheduler...');

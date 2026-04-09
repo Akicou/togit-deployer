@@ -46,10 +46,11 @@ export async function getRepoAccessToken(repoId: number): Promise<string> {
 export async function checkForUpdates(repo: Repository): Promise<{ hasUpdate: boolean; ref: string; refType: 'release' | 'commit' }> {
   // Skip if a deployment is already in progress
   const inProgress = await query<{ id: number }>(
-    `SELECT id FROM deployments WHERE repo_id = $1 AND status IN ('pending', 'building') LIMIT 1`,
+    `SELECT id FROM deployments WHERE repo_id = $1 AND status IN ('pending', 'building', 'running') LIMIT 1`,
     [repo.id]
   );
   if (inProgress.rows.length > 0) {
+    logSystem(`Skipping ${repo.full_name} - deployment ${inProgress.rows[0].id} already in progress`);
     return { hasUpdate: false, ref: '', refType: 'release' };
   }
 
