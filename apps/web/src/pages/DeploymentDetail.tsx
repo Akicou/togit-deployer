@@ -7,11 +7,7 @@ import LogViewer from '../components/LogViewer';
 import DeployBadge from '../components/DeployBadge';
 import type { Deployment, Log } from '../types';
 
-interface DeploymentDetailProps {
-  user: any;
-}
-
-export default function DeploymentDetail({ user }: { user: User }) {
+export default function DeploymentDetail({ user }: { user: any }) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [deployment, setDeployment] = useState<Deployment | null>(null);

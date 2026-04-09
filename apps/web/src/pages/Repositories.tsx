@@ -206,12 +206,15 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
     watch_branch: repo.watch_branch ?? 'main',
     enabled: repo.enabled,
   });
+  const [envVars, setEnvVars] = useState<Record<string, string>>(repo.deployment_env_vars || {});
+  const [newKey, setNewKey] = useState('');
+  const [newValue, setNewValue] = useState('');
   const [saving, setSaving] = useState(false);
 
   async function handleSave() {
     setSaving(true);
     try {
-      await api.patch(`/api/repos/${repo.id}`, config);
+      await api.patch(`/api/repos/${repo.id}`, { ...config, deployment_env_vars: envVars });
       onRefresh();
     } catch (error) {
       console.error('Failed to save:', error);
@@ -412,6 +415,80 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
               />
               <span style={{ color: '#1a1a1a', fontWeight: 700, fontSize: 14 }}>Auto-deploy enabled</span>
             </label>
+          </div>
+
+          {/* Environment Variables */}
+          <div style={{ marginBottom: 24 }}>
+            <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Environment Variables
+            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+              {Object.entries(envVars).map(([key, value]) => (
+                <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    value={key}
+                    readOnly
+                    style={{
+                      flex: 1, padding: '10px 12px', border: '2px solid #1a1a1a',
+                      background: '#f5f5f5', color: '#1a1a1a', fontSize: 13, fontWeight: 700,
+                      fontFamily: 'JetBrains Mono, monospace', outline: 'none',
+                    }}
+                  />
+                  <input
+                    value={value}
+                    onChange={(e) => setEnvVars({ ...envVars, [key]: e.target.value })}
+                    style={{
+                      flex: 2, padding: '10px 12px', border: '2px solid #1a1a1a',
+                      background: '#f5f5f5', color: '#1a1a1a', fontSize: 13, fontWeight: 600,
+                      fontFamily: 'JetBrains Mono, monospace', outline: 'none',
+                    }}
+                  />
+                  <button
+                    onClick={() => { const copy = { ...envVars }; delete copy[key]; setEnvVars(copy); }}
+                    style={{
+                      padding: '10px 12px', border: '2px solid #1a1a1a', background: '#ffffff',
+                      color: '#1a1a1a', fontWeight: 800, cursor: 'pointer', fontSize: 14,
+                    }}
+                  >×</button>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                value={newKey}
+                onChange={(e) => setNewKey(e.target.value)}
+                placeholder="KEY"
+                style={{
+                  flex: 1, padding: '10px 12px', border: '2px solid #1a1a1a',
+                  background: '#ffffff', color: '#1a1a1a', fontSize: 12, fontWeight: 700,
+                  fontFamily: 'JetBrains Mono, monospace', outline: 'none',
+                }}
+              />
+              <input
+                value={newValue}
+                onChange={(e) => setNewValue(e.target.value)}
+                placeholder="value"
+                style={{
+                  flex: 2, padding: '10px 12px', border: '2px solid #1a1a1a',
+                  background: '#ffffff', color: '#1a1a1a', fontSize: 12, fontWeight: 600,
+                  fontFamily: 'JetBrains Mono, monospace', outline: 'none',
+                }}
+              />
+              <button
+                onClick={() => {
+                  if (newKey.trim()) {
+                    setEnvVars({ ...envVars, [newKey.trim()]: newValue });
+                    setNewKey('');
+                    setNewValue('');
+                  }
+                }}
+                style={{
+                  padding: '10px 14px', border: '2px solid #1a1a1a', background: '#1a1a1a',
+                  color: '#ffffff', fontWeight: 800, cursor: 'pointer', fontSize: 12,
+                  textTransform: 'uppercase',
+                }}
+              >Add</button>
+            </div>
           </div>
 
           <button

@@ -12,7 +12,7 @@ export default function TunnelStatus({ status, url }: TunnelStatusProps) {
     pending: { color: '#1a1a1a', label: 'PENDING', icon: SpinnerIcon },
   };
 
-  const { color, label, icon: Icon } = config[status];
+  const { label, icon: Icon } = config[status];
 
   return (
     <div style={{

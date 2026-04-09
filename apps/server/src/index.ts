@@ -16,6 +16,7 @@ import * as reposApi from './api/repos.js';
 import * as deploymentsApi from './api/deployments.js';
 import * as logsApi from './api/logs.js';
 import * as usersApi from './api/users.js';
+import * as accessApi from './api/access-requests.js';
 import type { User } from './types.js';
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -52,7 +53,10 @@ if (existsSync(rootEnvPath)) {
 }
 
 // Authentication middleware
-async function requireAuth(req: Request): Promise<{ user: User; sessionId: string } | Response> {
+async function requireAuth(
+  req: Request,
+  options: { allowRestricted?: boolean } = {}
+): Promise<{ user: User; sessionId: string } | Response> {
   const cookieHeader = req.headers.get('Cookie') || '';
   const cookies = Object.fromEntries(
     cookieHeader.split(';').map((c) => {
@@ -69,6 +73,13 @@ async function requireAuth(req: Request): Promise<{ user: User; sessionId: strin
   const session = await getSession(sessionId);
   if (!session) {
     return Response.json({ error: 'Session expired' }, { status: 401 });
+  }
+
+  if (!options.allowRestricted && session.user.access_level !== 'approved') {
+    return Response.json({
+      error: 'Access restricted',
+      access_level: session.user.access_level,
+    }, { status: 403 });
   }
 
   return { user: session.user, sessionId };
@@ -115,7 +126,7 @@ async function handleRequest(req: Request): Promise<Response> {
 
     // Auth routes
     if (path === '/api/auth/me' && req.method === 'GET') {
-      const authResult = await requireAuth(req);
+      const authResult = await requireAuth(req, { allowRestricted: true });
       if (authResult instanceof Response) return authResult;
       return authApi.handleMe(req as any);
     }
@@ -244,6 +255,40 @@ async function handleRequest(req: Request): Promise<Response> {
 
     if (path === '/api/settings' && req.method === 'PATCH') {
       return usersApi.updateSettings(req as any, user);
+    }
+
+    // Access request routes
+    // POST /api/access-requests — create (allow restricted users)
+    const authResultForAR = await requireAuth(req, { allowRestricted: true });
+    if (path === '/api/access-requests' && req.method === 'POST') {
+      if (authResultForAR instanceof Response) return authResultForAR;
+      return accessApi.createAccessRequest(req as any, authResultForAR.user);
+    }
+
+    // GET /api/access-requests — list (admin only)
+    if (path === '/api/access-requests' && req.method === 'GET') {
+      return accessApi.listAccessRequests(req as any, user);
+    }
+
+    // PATCH /api/access-requests/:userId — approve/block/ban
+    const arMatch = path.match(/^\/api\/access-requests\/(\d+)$/);
+    if (arMatch && req.method === 'PATCH') {
+      const targetUserId = parseInt(arMatch[1], 10);
+      return accessApi.updateAccessRequest(req as any, user, targetUserId);
+    }
+
+    // POST /api/access-requests/:userId/kick
+    const arKickMatch = path.match(/^\/api\/access-requests\/(\d+)\/kick$/);
+    if (arKickMatch && req.method === 'POST') {
+      const targetUserId = parseInt(arKickMatch[1], 10);
+      return accessApi.kickUser(req as any, user, targetUserId);
+    }
+
+    // POST /api/access-requests/:userId/unban
+    const arUnbanMatch = path.match(/^\/api\/access-requests\/(\d+)\/unban$/);
+    if (arUnbanMatch && req.method === 'POST') {
+      const targetUserId = parseInt(arUnbanMatch[1], 10);
+      return accessApi.unbanUser(req as any, user, targetUserId);
     }
 
     // Serve static files for production

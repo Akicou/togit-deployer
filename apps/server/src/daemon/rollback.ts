@@ -65,7 +65,9 @@ export async function rollbackRepo(repo: Repository): Promise<Deployment | null>
     const rolledBackDeployment = await deploy(
       repo,
       lastDeployment.ref,
-      lastDeployment.ref_type as 'release' | 'commit'
+      lastDeployment.ref_type as 'release' | 'commit',
+      null,
+      lastDeployment.env_vars || {}
     );
 
     logSystem(

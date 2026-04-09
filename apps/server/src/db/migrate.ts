@@ -11,6 +11,7 @@ const migrations = [
     github_login TEXT NOT NULL,
     github_access_token TEXT,
     role TEXT NOT NULL DEFAULT 'viewer',
+    access_level TEXT NOT NULL DEFAULT 'pending',
     created_at TIMESTAMPTZ DEFAULT NOW()
   )`,
 
@@ -76,6 +77,7 @@ const migrations = [
 
   `INSERT INTO settings (key, value) VALUES ('poll_interval_seconds', '60') ON CONFLICT (key) DO NOTHING`,
 
+
   // Indexes for performance
   `CREATE INDEX IF NOT EXISTS idx_deployments_repo_id ON deployments(repo_id)`,
   `CREATE INDEX IF NOT EXISTS idx_deployments_status ON deployments(status)`,
@@ -89,6 +91,23 @@ const migrations = [
 
   // Add localtonet_tunnel_id to store the API tunnel ID for clean deletion
   `ALTER TABLE deployments ADD COLUMN IF NOT EXISTS localtonet_tunnel_id TEXT`,
+
+  `ALTER TABLE repositories ADD COLUMN IF NOT EXISTS deployment_env_vars JSONB DEFAULT '{}'`,
+  
+  `ALTER TABLE deployments ADD COLUMN IF NOT EXISTS env_vars JSONB DEFAULT '{}'`,
+  
+  `CREATE TABLE IF NOT EXISTS access_requests (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    status TEXT CHECK (status IN ('pending', 'approved', 'blocked', 'banned')) DEFAULT 'pending',
+    requested_at TIMESTAMPTZ DEFAULT NOW(),
+    processed_at TIMESTAMPTZ,
+    processed_by INTEGER REFERENCES users(id),
+    note TEXT
+  )`,
+
+  `CREATE INDEX IF NOT EXISTS idx_access_requests_user_id ON access_requests(user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_access_requests_status ON access_requests(status)`
 ];
 
 export async function runMigrations(): Promise<void> {

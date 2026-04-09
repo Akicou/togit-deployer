@@ -18,6 +18,7 @@ const updateRepoSchema = z.object({
   deploy_mode: z.enum(['release', 'commit']).optional(),
   watch_branch: z.string().optional(),
   enabled: z.boolean().optional(),
+  deployment_env_vars: z.record(z.string(), z.string()).optional(),
 });
 
 export async function listRepos(req: Request, user: User): Promise<Response> {
@@ -140,6 +141,10 @@ export async function updateRepo(req: Request, user: User, repoId: number): Prom
     updates.push(`enabled = $${paramIndex++}`);
     values.push(parsed.data.enabled);
   }
+  if (parsed.data.deployment_env_vars !== undefined) {
+    updates.push(`deployment_env_vars = $${paramIndex++}`);
+    values.push(JSON.stringify(parsed.data.deployment_env_vars));
+  }
 
   if (updates.length === 0) {
     return Response.json({ error: 'No updates provided' }, { status: 400 });
@@ -226,6 +231,17 @@ export async function triggerDeploy(req: Request, user: User, repoId: number): P
     return Response.json({ error: 'A deployment is already in progress for this repository' }, { status: 409 });
   }
 
+  // Extract environment variables for this deployment from request body
+  let env_vars: Record<string, string> = {};
+  try {
+    const body = await req.json();
+    if (typeof body === 'object' && body !== null && 'env_vars' in body) {
+      env_vars = body.env_vars || {};
+    }
+  } catch {
+    // ignore invalid json
+  }
+
   // Get the latest ref based on deploy mode
   let ref: string;
   let refType: 'release' | 'commit';
@@ -249,7 +265,7 @@ export async function triggerDeploy(req: Request, user: User, repoId: number): P
   }
 
   try {
-    const deployment = await deploy(repo, ref, refType, user);
+    const deployment = await deploy(repo, ref, refType, user, env_vars);
     return Response.json({ deployment }, { status: 201 });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);

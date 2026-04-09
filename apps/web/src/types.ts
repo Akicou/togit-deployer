@@ -5,6 +5,7 @@ export interface User {
   github_login: string;
   github_access_token?: string;
   role: 'admin' | 'deployer' | 'viewer';
+  access_level: 'pending' | 'approved' | 'blocked' | 'banned';
   created_at: string;
 }
 
@@ -19,6 +20,7 @@ export interface Repository {
   watch_branch: string;
   enabled: boolean;
   added_by: number | null;
+  deployment_env_vars: Record<string, string>;
   created_at: string;
   last_deployed_ref?: string;
   last_deployed_ref_type?: string;
@@ -37,6 +39,7 @@ export interface Deployment {
   tunnel_url: string | null;
   tunnel_port: number | null;
   error_message: string | null;
+  env_vars: Record<string, string>;
   started_at: string;
   finished_at: string | null;
   repo_name?: string;
@@ -70,4 +73,15 @@ export interface SystemStatus {
 
 export interface Settings {
   poll_interval_seconds: number;
+}
+
+export interface AccessRequest {
+  id: number;
+  user_id: number;
+  github_login: string;
+  status: 'pending' | 'approved' | 'blocked' | 'banned';
+  requested_at: string;
+  processed_at: string | null;
+  processed_by: number | null;
+  note: string | null;
 }

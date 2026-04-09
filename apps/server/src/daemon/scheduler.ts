@@ -121,7 +121,7 @@ export async function runSchedulerTick(): Promise<void> {
 
         if (hasUpdate) {
           logSystem(`New ${refType} detected for ${repo.full_name}: ${ref}`);
-          await deploy(repo, ref, refType);
+          await deploy(repo, ref, refType, null, repo.deployment_env_vars || {});
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);

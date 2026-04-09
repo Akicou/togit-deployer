@@ -1,27 +1,22 @@
 import Docker from 'dockerode';
 import { spawn } from 'child_process';
 import path from 'path';
-
 import fs from 'fs';
 import { query } from '../db/client.js';
-import { logBuild, logDocker, logNetwork, logSystem, logError } from '../logger/index.js';
+import { logBuild, logDocker, logSystem, logError } from '../logger/index.js';
 import { startTunnel, stopTunnel } from './localtonet.js';
 import { rollbackRepo } from './rollback.js';
-import { getLastDeployedRef } from '../github/api.js';
 import { decryptAccessToken } from '../github/oauth.js';
 import type { Repository, Deployment, User } from '../types.js';
 
 const docker = new Docker();
 
-// Ensure temp directory exists
 const TEMP_DIR = '/tmp/togit';
 if (!fs.existsSync(TEMP_DIR)) {
   fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 
 function sanitizeRef(ref: string): string {
-  // Docker tags can only contain alphanumeric, underscore, hyphen, and colon
-  // Replace problematic characters
   return ref.replace(/[^a-zA-Z0-9_-]/g, '-').substring(0, 128);
 }
 
@@ -38,16 +33,24 @@ export async function deploy(
   repo: Repository,
   ref: string,
   refType: 'release' | 'commit',
-  triggeredBy?: User | null
+  triggeredBy?: User | null,
+  deployEnvVars: Record<string, string> = {}
 ): Promise<Deployment> {
   logSystem(`Starting deployment: ${repo.full_name} @ ${ref}`, { repo_id: repo.id });
 
-  // Insert deployment record
+  // Merge repo-level env vars with deployment-level env vars
+  // Deployment-level vars take precedence over repo-level vars
+  const mergedEnvVars: Record<string, string> = {
+    ...(repo.deployment_env_vars || {}),
+    ...deployEnvVars,
+  };
+
+  // Insert deployment record with env vars
   const insertResult = await query<Deployment>(
-    `INSERT INTO deployments (repo_id, triggered_by, ref, ref_type, status)
-     VALUES ($1, $2, $3, $4, 'pending')
+    `INSERT INTO deployments (repo_id, triggered_by, ref, ref_type, status, env_vars)
+     VALUES ($1, $2, $3, $4, 'pending', $5)
      RETURNING *`,
-    [repo.id, triggeredBy?.id || null, ref, refType]
+    [repo.id, triggeredBy?.id || null, ref, refType, JSON.stringify(mergedEnvVars)]
   );
 
   const deployment = insertResult.rows[0];
@@ -56,7 +59,6 @@ export async function deploy(
   const containerName = `togit-${repo.id}`;
 
   try {
-    // Update status to building
     await query('UPDATE deployments SET status = $1 WHERE id = $2', ['building', deployment.id]);
     deployment.status = 'building';
 
@@ -75,7 +77,6 @@ export async function deploy(
     // Clone repository
     const cloneDir = path.join(TEMP_DIR, deployment.id.toString());
     await logBuild(`Cloning ${repo.full_name} (${refType}: ${ref})...`, { deployment_id: deployment.id, repo_id: repo.id });
-
     await cloneRepo(repo, ref, accessToken, cloneDir);
 
     // Check for Dockerfile
@@ -88,16 +89,14 @@ export async function deploy(
 
     // Build Docker image
     await logBuild(`Building Docker image: ${imageName}`, { deployment_id: deployment.id, repo_id: repo.id });
-
     await buildImage(targetDir, imageName, deployment.id, repo.id);
 
     // Stop existing container for this repo
     await stopExistingContainer(containerName);
 
-    // Run container
+    // Run container with merged env vars
     await logDocker(`Starting container: ${containerName}`, { deployment_id: deployment.id, repo_id: repo.id });
-
-    const container = await runContainer(imageName, containerName);
+    const container = await runContainer(imageName, containerName, mergedEnvVars);
 
     // Get container info to find exposed port
     const containerInfo = await docker.getContainer(container.id).inspect() as any;
@@ -117,7 +116,6 @@ export async function deploy(
 
     const { tunnelId, tunnelUrl } = await startTunnel(deployment.id, hostPort, authToken);
 
-    // Update deployment status
     await query(
       `UPDATE deployments
        SET status = 'running', container_id = $1, tunnel_url = $2, tunnel_port = $3, localtonet_tunnel_id = $4, finished_at = NOW()
@@ -130,14 +128,13 @@ export async function deploy(
       repo_id: repo.id,
     });
 
-    // Cleanup temp directory
     fs.rmSync(cloneDir, { recursive: true, force: true });
 
     return { ...deployment, status: 'running', container_id: container.id, tunnel_url: tunnelUrl, tunnel_port: hostPort };
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    
+
     await query(
       `UPDATE deployments SET status = 'failed', error_message = $1, finished_at = NOW() WHERE id = $2`,
       [errorMessage, deployment.id]
@@ -145,7 +142,6 @@ export async function deploy(
 
     await logError(`Deployment failed: ${errorMessage}`, { deployment_id: deployment.id, repo_id: repo.id });
 
-    // Trigger rollback
     await rollbackRepo(repo);
 
     throw error;
@@ -160,16 +156,16 @@ async function cloneRepo(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const args = ['clone', '--depth=1', '--branch', ref];
-    
+
     if (accessToken) {
       args.push(`https://x-access-token:${accessToken}@github.com/${repo.full_name}.git`);
     } else {
       args.push(`https://github.com/${repo.full_name}.git`);
     }
-    
+
     args.push(targetDir);
 
-    const proc = spawn('git', args, { timeout: 300000 }); // 5 minute timeout
+    const proc = spawn('git', args, { timeout: 300000 });
 
     proc.stdout?.on('data', (data) => {
       logBuild(data.toString().trim(), { repo_id: repo.id });
@@ -180,11 +176,8 @@ async function cloneRepo(
     });
 
     proc.on('close', (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(`git clone failed with code ${code}`));
-      }
+      if (code === 0) resolve();
+      else reject(new Error(`git clone failed with code ${code}`));
     });
 
     proc.on('error', (err) => {
@@ -200,36 +193,22 @@ async function buildImage(
   repoId: number
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    docker.buildImage(context, {
-      t: imageName,
-      rm: true,
-    }, (err, stream) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-
-      if (!stream) {
-        reject(new Error('No stream from Docker build'));
-        return;
-      }
+    docker.buildImage(context, { t: imageName, rm: true }, (err, stream) => {
+      if (err) { reject(err); return; }
+      if (!stream) { reject(new Error('No stream from Docker build')); return; }
 
       docker.modem.followProgress(
         stream,
-        (err, output) => {
-          if (err) {
-            reject(err);
-          } else {
+        (err) => {
+          if (err) reject(err);
+          else {
             logBuild(`Docker build completed: ${imageName}`, { deployment_id: deploymentId, repo_id: repoId });
             resolve();
           }
         },
         (event) => {
-          if (event.stream) {
-            logBuild(event.stream.trim(), { deployment_id: deploymentId, repo_id: repoId });
-          } else if (event.error) {
-            logBuild(`Docker build error: ${event.error}`, { deployment_id: deploymentId, repo_id: repoId });
-          }
+          if (event.stream) logBuild(event.stream.trim(), { deployment_id: deploymentId, repo_id: repoId });
+          else if (event.error) logBuild(`Docker build error: ${event.error}`, { deployment_id: deploymentId, repo_id: repoId });
         }
       );
     });
@@ -243,25 +222,25 @@ async function stopExistingContainer(containerName: string): Promise<void> {
     await existingContainer.remove();
     logDocker(`Stopped and removed existing container: ${containerName}`);
   } catch (err: unknown) {
-    // Container doesn't exist, which is fine
-    if (err instanceof Error && !err.message.includes('No such container')) {
-      throw err;
-    }
+    if (err instanceof Error && !err.message.includes('No such container')) throw err;
   }
 }
 
-async function runContainer(imageName: string, containerName: string): Promise<{ id: string }> {
+async function runContainer(
+  imageName: string,
+  containerName: string,
+  envVars: Record<string, string>
+): Promise<{ id: string }> {
+  const envArray = Object.entries(envVars).map(([k, v]) => `${k}=${v}`);
+
   const container = await docker.createContainer({
     Image: imageName,
     name: containerName,
-    ExposedPorts: {
-      '3000/tcp': {},
-      '80/tcp': {},
-      '8080/tcp': {},
-    },
+    Env: envArray,
+    ExposedPorts: { '3000/tcp': {}, '80/tcp': {}, '8080/tcp': {} },
     HostConfig: {
       PortBindings: {
-        '3000/tcp': [{ HostPort: '' }],  // Let Docker assign random port
+        '3000/tcp': [{ HostPort: '' }],
         '80/tcp': [{ HostPort: '' }],
         '8080/tcp': [{ HostPort: '' }],
       },
@@ -276,21 +255,18 @@ async function runContainer(imageName: string, containerName: string): Promise<{
 
 function getExposedPort(containerInfo: any): number | null {
   const ports = containerInfo?.NetworkSettings?.Ports || {};
-  
-  // Check common ports
   const commonPorts = ['3000', '80', '8080', '5000', '8000'];
-  
+
   for (const port of commonPorts) {
     const portKey = `${port}/tcp`;
-    if (ports[portKey] && ports[portKey]?.length > 0) {
-      return parseInt(ports[portKey]![0].HostPort, 10);
+    if (ports[portKey]?.length > 0) {
+      return parseInt(ports[portKey][0].HostPort, 10);
     }
   }
 
-  // If no common port found, return first available
-  for (const [key, binding] of Object.entries(ports)) {
+  for (const [, binding] of Object.entries(ports)) {
     if (binding && Array.isArray(binding) && binding.length > 0) {
-      return parseInt(binding[0].HostPort, 10);
+      return parseInt((binding as any)[0].HostPort, 10);
     }
   }
 
@@ -304,9 +280,7 @@ export async function stopContainer(containerId: string): Promise<void> {
     await container.remove();
     logDocker(`Stopped container: ${containerId}`);
   } catch (err: unknown) {
-    if (err instanceof Error && !err.message.includes('No such container')) {
-      throw err;
-    }
+    if (err instanceof Error && !err.message.includes('No such container')) throw err;
   }
 }
 
@@ -326,4 +300,8 @@ export async function stopAllTogitContainers(): Promise<void> {
   } catch (err) {
     console.error('Error stopping containers:', err);
   }
+}
+
+export async function revokeUserSessions(userId: number): Promise<void> {
+  await query('DELETE FROM sessions WHERE user_id = $1', [userId]);
 }

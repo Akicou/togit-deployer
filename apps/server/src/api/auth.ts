@@ -116,6 +116,7 @@ export async function handleMe(req: Request): Promise<Response> {
       id: session.user.id,
       github_login: session.user.github_login,
       role: session.user.role,
+      access_level: session.user.access_level,
       created_at: session.user.created_at,
     },
     session: {

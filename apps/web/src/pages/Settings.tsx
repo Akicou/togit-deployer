@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { api } from '../lib/api';
-import type { User, Settings as SettingsType } from '../types';
+import type { User, Settings as SettingsType, AccessRequest } from '../types';
 
 interface SettingsProps {
   user: User;
@@ -14,7 +14,9 @@ export default function Settings({ user }: SettingsProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
+  const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([]);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [activeTab, setActiveTab] = useState<'general' | 'users' | 'access'>('general');
 
   const isAdmin = user.role === 'admin';
 
@@ -22,6 +24,7 @@ export default function Settings({ user }: SettingsProps) {
     loadSettings();
     if (isAdmin) {
       loadUsers();
+      loadAccessRequests();
     }
   }, [isAdmin]);
 
@@ -51,6 +54,18 @@ export default function Settings({ user }: SettingsProps) {
     }
   }
 
+  async function loadAccessRequests() {
+    try {
+      const response = await api.get('/api/access-requests');
+      if (response.ok) {
+        const data = await response.json();
+        setAccessRequests(data.access_requests || []);
+      }
+    } catch (error) {
+      console.error('Failed to load access requests:', error);
+    }
+  }
+
   async function handleSaveSettings() {
     setSaving(true);
     setMessage(null);
@@ -61,7 +76,7 @@ export default function Settings({ user }: SettingsProps) {
       } else {
         setMessage({ type: 'error', text: 'Failed to save settings' });
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'Failed to save settings' });
     } finally {
       setSaving(false);
@@ -73,10 +88,33 @@ export default function Settings({ user }: SettingsProps) {
       const response = await api.patch(`/api/users/${userId}`, { role });
       if (response.ok) {
         loadUsers();
-        setMessage({ type: 'success', text: 'Role updated successfully' });
+        setMessage({ type: 'success', text: 'Role updated' });
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'Failed to update role' });
+    }
+  }
+
+  async function handleAccessAction(userId: number, action: string) {
+    try {
+      let response: Response;
+      if (action === 'kick') {
+        response = await api.post(`/api/access-requests/${userId}/kick`);
+      } else if (action === 'unban') {
+        response = await api.post(`/api/access-requests/${userId}/unban`);
+      } else {
+        response = await api.patch(`/api/access-requests/${userId}`, { status: action });
+      }
+      if (response.ok) {
+        loadUsers();
+        loadAccessRequests();
+        setMessage({ type: 'success', text: `User ${action} successful` });
+      } else {
+        const data = await response.json();
+        setMessage({ type: 'error', text: data.error || `Failed to ${action} user` });
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Action failed' });
     }
   }
 
@@ -104,20 +142,19 @@ export default function Settings({ user }: SettingsProps) {
     fontFamily: 'inherit',
   };
 
-  const buttonStyle: React.CSSProperties = {
-    width: '100%',
-    padding: '14px',
+  const tabStyle = (active: boolean): React.CSSProperties => ({
+    padding: '12px 20px',
     border: '3px solid #1a1a1a',
-    background: saving ? '#f5f5f5' : '#1a1a1a',
-    color: saving ? '#666' : '#ffffff',
+    background: active ? '#1a1a1a' : '#ffffff',
+    color: active ? '#ffffff' : '#1a1a1a',
     fontWeight: 800,
-    cursor: saving ? 'not-allowed' : 'pointer',
+    cursor: 'pointer',
     fontSize: 13,
     textTransform: 'uppercase',
     letterSpacing: '0.5px',
-    boxShadow: saving ? '1px 1px 0 #1a1a1a' : '4px 4px 0 #1a1a1a',
+    boxShadow: active ? '4px 4px 0 #1a1a1a' : '2px 2px 0 #1a1a1a',
     transition: 'all 0.1s ease',
-  };
+  });
 
   if (loading) {
     return (
@@ -140,7 +177,7 @@ export default function Settings({ user }: SettingsProps) {
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        style={{ marginBottom: 40 }}
+        style={{ marginBottom: 32 }}
       >
         <h1 style={{ fontSize: 36, fontWeight: 800, color: '#1a1a1a', marginBottom: 8, letterSpacing: '-1px' }}>
           SETTINGS
@@ -157,9 +194,9 @@ export default function Settings({ user }: SettingsProps) {
           style={{
             padding: '16px 20px',
             border: '3px solid #1a1a1a',
-            marginBottom: 30,
-            background: message.type === 'success' ? '#ffffff' : '#f5f5f5',
-            color: message.type === 'success' ? '#1a1a1a' : '#1a1a1a',
+            marginBottom: 24,
+            background: '#ffffff',
+            color: '#1a1a1a',
             fontWeight: 700,
             boxShadow: '4px 4px 0 #1a1a1a',
           }}
@@ -168,159 +205,139 @@ export default function Settings({ user }: SettingsProps) {
         </motion.div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-        {/* General Settings */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          style={{
-            background: '#ffffff',
-            border: '3px solid #1a1a1a',
-            padding: 28,
-            boxShadow: '4px 4px 0 #1a1a1a',
-          }}
-        >
-          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginBottom: 24, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            General Settings
-          </h2>
-
-          <div style={{ marginBottom: 24 }}>
-            <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Poll Interval (seconds)
-            </label>
-            <input
-              type="number"
-              min="10"
-              max="3600"
-              value={settings.poll_interval_seconds}
-              onChange={(e) => setSettings({ ...settings, poll_interval_seconds: parseInt(e.target.value, 10) || 60 })}
-              style={inputStyle}
-            />
-            <p style={{ color: '#888', fontSize: 11, marginTop: 8, fontWeight: 600 }}>
-              How often to check GitHub for new releases or commits
-            </p>
-          </div>
-
-          <button
-            onClick={handleSaveSettings}
-            disabled={saving}
-            style={buttonStyle}
-          >
-            {saving ? 'Saving...' : 'Save Settings'}
-          </button>
-        </motion.div>
-
-        {/* Environment Info */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          style={{
-            background: '#ffffff',
-            border: '3px solid #1a1a1a',
-            padding: 28,
-            boxShadow: '4px 4px 0 #1a1a1a',
-          }}
-        >
-          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginBottom: 24, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Environment
-          </h2>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: 12,
-              border: '2px solid #1a1a1a',
-              background: '#f5f5f5',
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 28 }}>
+        <button style={tabStyle(activeTab === 'general')} onClick={() => setActiveTab('general')}>General</button>
+        <button style={tabStyle(activeTab === 'users')} onClick={() => setActiveTab('users')}>Users</button>
+        <button style={tabStyle(activeTab === 'access')} onClick={() => setActiveTab('access')}>
+          Access Requests{accessRequests.filter(a => a.status === 'pending').length > 0 && (
+            <span style={{
+              marginLeft: 8,
+              padding: '2px 8px',
+              background: '#1a1a1a',
+              color: '#ffffff',
+              fontSize: 10,
             }}>
-              <span style={{ color: '#666', fontWeight: 700 }}>Node Environment</span>
-              <span style={{ color: '#1a1a1a', fontWeight: 700 }}>{import.meta.env.MODE || 'development'}</span>
-            </div>
-
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: 12,
-              border: '2px solid #1a1a1a',
-              background: '#f5f5f5',
-            }}>
-              <span style={{ color: '#666', fontWeight: 700 }}>GitHub OAuth</span>
-              <span style={{ color: import.meta.env.GITHUB_APP_CLIENT_ID ? '#1a1a1a' : '#666', fontWeight: 700 }}>
-                {import.meta.env.GITHUB_APP_CLIENT_ID ? 'Configured' : 'Not Configured'}
-              </span>
-            </div>
-
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: 12,
-              border: '2px solid #1a1a1a',
-              background: '#f5f5f5',
-            }}>
-              <span style={{ color: '#666', fontWeight: 700 }}>Localtonet</span>
-              <span style={{ color: import.meta.env.LOCALTONET_AUTH_TOKEN ? '#1a1a1a' : '#666', fontWeight: 700 }}>
-                {import.meta.env.LOCALTONET_AUTH_TOKEN ? 'Configured' : 'Not Configured'}
-              </span>
-            </div>
-
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: 12,
-              border: '2px solid #1a1a1a',
-              background: '#f5f5f5',
-            }}>
-              <span style={{ color: '#666', fontWeight: 700 }}>Database</span>
-              <span style={{ color: '#1a1a1a', fontWeight: 700 }}>Connected</span>
-            </div>
-          </div>
-        </motion.div>
+              {accessRequests.filter(a => a.status === 'pending').length}
+            </span>
+          )}
+        </button>
       </div>
 
-      {/* User Management */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        style={{
-          background: '#ffffff',
-          border: '3px solid #1a1a1a',
-          padding: 28,
-          marginBottom: 24,
-          boxShadow: '4px 4px 0 #1a1a1a',
-        }}
-      >
-        <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginBottom: 24, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-          User Management
-        </h2>
+      {/* General Tab */}
+      {activeTab === 'general' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            style={{
+              background: '#ffffff',
+              border: '3px solid #1a1a1a',
+              padding: 28,
+              boxShadow: '4px 4px 0 #1a1a1a',
+            }}
+          >
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginBottom: 24, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              General Settings
+            </h2>
 
-        {users.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
-            No users yet
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Poll Interval (seconds)
+              </label>
+              <input
+                type="number"
+                min="10"
+                max="3600"
+                value={settings.poll_interval_seconds}
+                onChange={(e) => setSettings({ ...settings, poll_interval_seconds: parseInt(e.target.value, 10) || 60 })}
+                style={inputStyle}
+              />
+              <p style={{ color: '#888', fontSize: 11, marginTop: 8, fontWeight: 600 }}>
+                How often to check GitHub for new releases or commits
+              </p>
+            </div>
+
+            <button
+              onClick={handleSaveSettings}
+              disabled={saving}
+              style={{
+                width: '100%',
+                padding: '14px',
+                border: '3px solid #1a1a1a',
+                background: saving ? '#f5f5f5' : '#1a1a1a',
+                color: saving ? '#666' : '#ffffff',
+                fontWeight: 800,
+                cursor: saving ? 'not-allowed' : 'pointer',
+                fontSize: 13,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                boxShadow: saving ? '1px 1px 0 #1a1a1a' : '4px 4px 0 #1a1a1a',
+                transition: 'all 0.1s ease',
+              }}
+            >
+              {saving ? 'Saving...' : 'Save Settings'}
+            </button>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            style={{
+              background: '#ffffff',
+              border: '3px solid #1a1a1a',
+              padding: 28,
+              boxShadow: '4px 4px 0 #1a1a1a',
+            }}
+          >
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginBottom: 24, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Environment
+            </h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[
+                ['Node Environment', import.meta.env.MODE || 'development'],
+                ['GitHub OAuth', import.meta.env.GITHUB_APP_CLIENT_ID ? 'Configured' : 'Not Configured'],
+                ['Localtonet', import.meta.env.LOCALTONET_AUTH_TOKEN ? 'Configured' : 'Not Configured'],
+                ['Database', 'Connected'],
+              ].map(([label, value]) => (
+                <div key={label} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: 12, border: '2px solid #1a1a1a', background: '#f5f5f5',
+                }}>
+                  <span style={{ color: '#666', fontWeight: 700 }}>{label}</span>
+                  <span style={{ color: '#1a1a1a', fontWeight: 700 }}>{value}</span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Users Tab */}
+      {activeTab === 'users' && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{
+            background: '#ffffff',
+            border: '3px solid #1a1a1a',
+            padding: 28,
+            boxShadow: '4px 4px 0 #1a1a1a',
+          }}
+        >
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginBottom: 24, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            All Users ({users.length})
+          </h2>
+          {users.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>No users yet</div>
+          ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '3px solid #1a1a1a' }}>
-                  <th style={{ textAlign: 'left', padding: '14px 12px', color: '#1a1a1a', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    User
-                  </th>
-                  <th style={{ textAlign: 'left', padding: '14px 12px', color: '#1a1a1a', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Role
-                  </th>
-                  <th style={{ textAlign: 'left', padding: '14px 12px', color: '#1a1a1a', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Joined
-                  </th>
-                  <th style={{ textAlign: 'left', padding: '14px 12px', color: '#1a1a1a', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Actions
-                  </th>
+                  {['User', 'Role', 'Status', 'Joined', 'Actions'].map(h => (
+                    <th key={h} style={{ textAlign: 'left', padding: '14px 12px', color: '#1a1a1a', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -329,22 +346,13 @@ export default function Settings({ user }: SettingsProps) {
                     <td style={{ padding: '16px 12px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         <div style={{
-                          width: 36,
-                          height: 36,
-                          border: '2px solid #1a1a1a',
-                          background: '#ffffff',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontWeight: 800,
-                          color: '#1a1a1a',
-                          fontSize: 14,
+                          width: 36, height: 36, border: '2px solid #1a1a1a', background: '#ffffff',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontWeight: 800, color: '#1a1a1a', fontSize: 14,
                         }}>
                           {u.github_login.charAt(0).toUpperCase()}
                         </div>
-                        <span style={{ color: '#1a1a1a', fontWeight: 700 }}>
-                          {u.github_login}
-                        </span>
+                        <span style={{ color: '#1a1a1a', fontWeight: 700 }}>{u.github_login}</span>
                       </div>
                     </td>
                     <td style={{ padding: '16px 12px' }}>
@@ -352,33 +360,157 @@ export default function Settings({ user }: SettingsProps) {
                         value={u.role}
                         onChange={(e) => handleUpdateRole(u.id, e.target.value)}
                         disabled={u.id === user.id}
-                        style={{
-                          ...selectStyle,
-                          cursor: u.id === user.id ? 'not-allowed' : 'pointer',
-                        }}
+                        style={{ ...selectStyle, cursor: u.id === user.id ? 'not-allowed' : 'pointer' }}
                       >
                         <option value="admin">Admin</option>
                         <option value="deployer">Deployer</option>
                         <option value="viewer">Viewer</option>
                       </select>
                     </td>
+                    <td style={{ padding: '16px 12px' }}>
+                      <span style={{
+                        padding: '4px 10px',
+                        border: '2px solid #1a1a1a',
+                        background: u.access_level === 'approved' ? '#1a1a1a' : '#ffffff',
+                        color: u.access_level === 'approved' ? '#ffffff' : '#1a1a1a',
+                        fontSize: 10,
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                      }}>
+                        {u.access_level}
+                      </span>
+                    </td>
                     <td style={{ padding: '16px 12px', color: '#666', fontSize: 13, fontWeight: 600 }}>
                       {new Date(u.created_at).toLocaleDateString()}
                     </td>
                     <td style={{ padding: '16px 12px' }}>
-                      {u.id === user.id && (
-                        <span style={{ color: '#1a1a1a', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                          Current
-                        </span>
+                      {u.id === user.id ? (
+                        <span style={{ fontSize: 11, fontWeight: 700, color: '#666', textTransform: 'uppercase' }}>You</span>
+                      ) : (
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          {u.access_level === 'approved' && (
+                            <button onClick={() => handleAccessAction(u.id, 'blocked')} style={{
+                              padding: '4px 10px', border: '2px solid #1a1a1a', background: '#ffffff',
+                              color: '#1a1a1a', fontWeight: 800, cursor: 'pointer', fontSize: 10,
+                              textTransform: 'uppercase',
+                            }}>Kick</button>
+                          )}
+                          {u.access_level === 'banned' && (
+                            <button onClick={() => handleAccessAction(u.id, 'unban')} style={{
+                              padding: '4px 10px', border: '2px solid #1a1a1a', background: '#1a1a1a',
+                              color: '#ffffff', fontWeight: 800, cursor: 'pointer', fontSize: 10,
+                              textTransform: 'uppercase',
+                            }}>Unban</button>
+                          )}
+                          {u.access_level === 'blocked' && (
+                            <>
+                              <button onClick={() => handleAccessAction(u.id, 'approved')} style={{
+                                padding: '4px 10px', border: '2px solid #1a1a1a', background: '#ffffff',
+                                color: '#1a1a1a', fontWeight: 800, cursor: 'pointer', fontSize: 10,
+                                textTransform: 'uppercase',
+                              }}>Approve</button>
+                              <button onClick={() => handleAccessAction(u.id, 'banned')} style={{
+                                padding: '4px 10px', border: '2px solid #1a1a1a', background: '#ffffff',
+                                color: '#1a1a1a', fontWeight: 800, cursor: 'pointer', fontSize: 10,
+                                textTransform: 'uppercase',
+                              }}>Ban</button>
+                            </>
+                          )}
+                        </div>
                       )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
-        )}
-      </motion.div>
+          )}
+        </motion.div>
+      )}
+
+      {/* Access Requests Tab */}
+      {activeTab === 'access' && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{
+            background: '#ffffff',
+            border: '3px solid #1a1a1a',
+            padding: 28,
+            boxShadow: '4px 4px 0 #1a1a1a',
+          }}
+        >
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginBottom: 24, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Access Requests
+          </h2>
+          {accessRequests.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
+              No access requests
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {accessRequests.map((ar) => (
+                <div key={ar.id} style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: 16,
+                  border: '2px solid #1a1a1a',
+                  background: ar.status === 'pending' ? '#ffffff' : '#f5f5f5',
+                  boxShadow: '2px 2px 0 #1a1a1a',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{
+                      width: 36, height: 36, border: '2px solid #1a1a1a', background: '#ffffff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontWeight: 800, color: '#1a1a1a', fontSize: 14,
+                    }}>
+                      {ar.github_login.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, color: '#1a1a1a' }}>{ar.github_login}</div>
+                      <div style={{ fontSize: 12, color: '#666', fontWeight: 600 }}>
+                        {new Date(ar.requested_at).toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <span style={{
+                      padding: '4px 10px',
+                      border: '2px solid #1a1a1a',
+                      background: ar.status === 'approved' ? '#1a1a1a' : '#ffffff',
+                      color: ar.status === 'approved' ? '#ffffff' : '#1a1a1a',
+                      fontSize: 10,
+                      fontWeight: 800,
+                      textTransform: 'uppercase',
+                    }}>
+                      {ar.status}
+                    </span>
+                    {ar.status === 'pending' && (
+                      <>
+                        <button onClick={() => handleAccessAction(ar.user_id, 'approved')} style={{
+                          padding: '6px 12px', border: '2px solid #1a1a1a', background: '#1a1a1a',
+                          color: '#ffffff', fontWeight: 800, cursor: 'pointer', fontSize: 11,
+                          textTransform: 'uppercase',
+                        }}>Approve</button>
+                        <button onClick={() => handleAccessAction(ar.user_id, 'blocked')} style={{
+                          padding: '6px 12px', border: '2px solid #1a1a1a', background: '#ffffff',
+                          color: '#1a1a1a', fontWeight: 800, cursor: 'pointer', fontSize: 11,
+                          textTransform: 'uppercase',
+                        }}>Block</button>
+                        <button onClick={() => handleAccessAction(ar.user_id, 'banned')} style={{
+                          padding: '6px 12px', border: '2px solid #1a1a1a', background: '#ffffff',
+                          color: '#1a1a1a', fontWeight: 800, cursor: 'pointer', fontSize: 11,
+                          textTransform: 'uppercase',
+                        }}>Ban</button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </motion.div>
+      )}
     </div>
   );
 }

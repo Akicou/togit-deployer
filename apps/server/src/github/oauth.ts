@@ -156,6 +156,7 @@ export async function getSession(sessionId: string): Promise<{ user: User; sessi
     github_login: string;
     github_access_token: string;
     role: 'admin' | 'deployer' | 'viewer';
+    access_level: 'pending' | 'approved' | 'blocked' | 'banned';
     created_at: Date;
   }>(
     `SELECT 
@@ -166,6 +167,7 @@ export async function getSession(sessionId: string): Promise<{ user: User; sessi
        u.github_login,
        u.github_access_token,
        u.role,
+       u.access_level,
        u.created_at
      FROM sessions s
      JOIN users u ON s.user_id = u.id
@@ -185,6 +187,7 @@ export async function getSession(sessionId: string): Promise<{ user: User; sessi
       github_login: row.github_login,
       github_access_token: row.github_access_token,
       role: row.role,
+      access_level: row.access_level,
       created_at: row.created_at,
     },
     session: {
