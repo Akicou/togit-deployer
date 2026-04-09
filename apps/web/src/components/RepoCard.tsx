@@ -5,7 +5,7 @@ import DeployBadge from './DeployBadge';
 
 interface RepoCardProps {
   repo: Repository;
-  onDeploy?: (id: number) => void;
+  onDeploy?: (id: number, name: string) => void;
   canDeploy?: boolean;
 }
 
@@ -134,7 +134,7 @@ export default function RepoCard({ repo, onDeploy, canDeploy = false }: RepoCard
         </Link>
         {canDeploy && onDeploy && (
           <button
-            onClick={() => onDeploy(repo.id)}
+            onClick={() => onDeploy(repo.id, repo.full_name)}
             style={{
               flex: 1,
               padding: '12px 16px',

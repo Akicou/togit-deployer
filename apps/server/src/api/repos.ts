@@ -273,6 +273,75 @@ export async function triggerDeploy(req: Request, user: User, repoId: number): P
   }
 }
 
+export async function getEnvExample(req: Request, user: User, repoId: number): Promise<Response> {
+  // Get the repo
+  const repo = await query<Repository>('SELECT * FROM repositories WHERE id = $1', [repoId]);
+  if (repo.rows.length === 0) {
+    return Response.json({ error: 'Repository not found' }, { status: 404 });
+  }
+
+  const repoData = repo.rows[0];
+
+  try {
+    // Get GitHub token
+    const tokenResult = await query<{ github_access_token: string }>(
+      'SELECT github_access_token FROM users WHERE id = $1',
+      [repoData.added_by || user.id]
+    );
+
+    if (!tokenResult.rows[0]?.github_access_token) {
+      return Response.json({ error: 'No GitHub token found' }, { status: 401 });
+    }
+
+    const accessToken = decryptAccessToken(tokenResult.rows[0].github_access_token);
+
+    // Fetch .env.example from the repository
+    const path = repoData.root_path === '/' ? '.env.example' : `${repoData.root_path}/.env.example`;
+    const url = `https://api.github.com/repos/${repoData.owner}/${repoData.name}/contents/${path}?ref=${repoData.watch_branch}`;
+
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'togit-deployer',
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        return Response.json({ env_example: null, message: 'No .env.example found in repository' });
+      }
+      return Response.json({ error: `GitHub API error: ${response.status}` }, { status: response.status });
+    }
+
+    const data = await response.json() as { content: string; encoding: string };
+    
+    // Decode base64 content
+    const content = Buffer.from(data.content, 'base64').toString('utf-8');
+    
+    // Parse env vars from .env.example
+    const envVars: Record<string, string> = {};
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith('#')) {
+        const [key, ...valueParts] = trimmed.split('=');
+        if (key && valueParts.length > 0) {
+          envVars[key.trim()] = valueParts.join('=').trim();
+        }
+      }
+    }
+
+    return Response.json({ 
+      env_example: envVars,
+      raw_content: content,
+      message: 'Found .env.example'
+    });
+  } catch (error) {
+    console.error('Error fetching .env.example:', error);
+    return Response.json({ error: 'Failed to fetch .env.example' }, { status: 500 });
+  }
+}
+
 export async function searchGitHubRepos(req: Request, user: User): Promise<Response> {
   const url = new URL(req.url);
   const query_ = url.searchParams.get('q') || '';

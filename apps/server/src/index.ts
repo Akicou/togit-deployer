@@ -186,6 +186,13 @@ async function handleRequest(req: Request): Promise<Response> {
       return reposApi.triggerDeploy(req as any, user, repoId);
     }
 
+    // Get .env.example from repository
+    const repoEnvExampleMatch = path.match(/^\/api\/repos\/(\d+)\/env-example$/);
+    if (repoEnvExampleMatch && req.method === 'GET') {
+      const repoId = parseInt(repoEnvExampleMatch[1], 10);
+      return reposApi.getEnvExample(req as any, user, repoId);
+    }
+
     // Deployment routes
     const deployIdMatch = path.match(/^\/api\/deployments\/(\d+)$/);
     if (deployIdMatch) {

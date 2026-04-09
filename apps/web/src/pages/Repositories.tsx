@@ -16,7 +16,11 @@ export default function Repositories({ user }: RepositoriesProps) {
   const [repos, setRepos] = useState<Repository[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [_deploying, setDeploying] = useState<number | null>(null);
+  const [showDeployModal, setShowDeployModal] = useState<{ repoId: number; repoName: string } | null>(null);
+  const [deployingRepo, setDeployingRepo] = useState<number | null>(null);
+  const [envVars, setEnvVars] = useState<Record<string, string>>({});
+  const [envExample, setEnvExample] = useState<Record<string, string> | null>(null);
+  const [loadingEnv, setLoadingEnv] = useState(false);
 
   const canManage = user.role === 'admin' || user.role === 'deployer';
 
@@ -38,17 +42,44 @@ export default function Repositories({ user }: RepositoriesProps) {
     }
   }
 
-  async function handleDeploy(repoId: number) {
-    setDeploying(repoId);
+  async function handleDeployClick(repoId: number, repoName: string) {
+    setEnvVars({});
+    setEnvExample(null);
+    setLoadingEnv(true);
+    setShowDeployModal({ repoId, repoName });
+    
+    // Try to fetch .env.example
     try {
-      const response = await api.post(`/api/repos/${repoId}/deploy`);
+      const response = await api.get(`/api/repos/${repoId}/env-example`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.env_example) {
+          setEnvExample(data.env_example);
+          setEnvVars(data.env_example);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load env example:', error);
+    } finally {
+      setLoadingEnv(false);
+    }
+  }
+
+  async function handleDeployConfirm() {
+    if (!showDeployModal) return;
+    setDeployingRepo(showDeployModal.repoId);
+    try {
+      const response = await api.post(`/api/repos/${showDeployModal.repoId}/deploy`, {
+        env_vars: envVars,
+      });
       if (response.ok) {
         await loadRepos();
+        setShowDeployModal(null);
       }
     } catch (error) {
       console.error('Deploy failed:', error);
     } finally {
-      setDeploying(null);
+      setDeployingRepo(null);
     }
   }
 
@@ -179,7 +210,7 @@ export default function Repositories({ user }: RepositoriesProps) {
               <RepoCard
                 repo={repo}
                 canDeploy={canManage}
-                onDeploy={handleDeploy}
+                onDeploy={(id, name) => handleDeployClick(id, name)}
               />
             </motion.div>
           ))}
@@ -193,6 +224,17 @@ export default function Repositories({ user }: RepositoriesProps) {
             onAdd={loadRepos}
           />
         )}
+        {showDeployModal && (
+          <DeployModal
+            showDeployModal={showDeployModal}
+            onClose={() => setShowDeployModal(null)}
+            onDeploy={handleDeployConfirm}
+            envVars={envVars}
+            setEnvVars={setEnvVars}
+            envExample={envExample}
+            loadingEnv={loadingEnv}
+          />
+        )}
       </AnimatePresence>
     </div>
   );
@@ -200,6 +242,10 @@ export default function Repositories({ user }: RepositoriesProps) {
 
 function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; onRefresh: () => void }) {
   const { deployments, loading } = useDeployments(repo.id);
+  const [showDeployModal, setShowDeployModal] = useState<{ repoId: number; repoName: string } | null>(null);
+  const [deployEnvVars, setDeployEnvVars] = useState<Record<string, string>>({});
+  const [envExample, setEnvExample] = useState<Record<string, string> | null>(null);
+  const [loadingEnv, setLoadingEnv] = useState(false);
   const [config, setConfig] = useState({
     root_path: repo.root_path,
     deploy_mode: repo.deploy_mode,
@@ -210,6 +256,23 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
   const [newKey, setNewKey] = useState('');
   const [newValue, setNewValue] = useState('');
   const [saving, setSaving] = useState(false);
+  const [deploying, setDeploying] = useState(false);
+
+  async function handleDeployConfirm() {
+    if (!showDeployModal) return;
+    setDeploying(true);
+    try {
+      await api.post(`/api/repos/${showDeployModal.repoId}/deploy`, {
+        env_vars: deployEnvVars,
+      });
+      setShowDeployModal(null);
+      onRefresh();
+    } catch (error) {
+      console.error('Deploy failed:', error);
+    } finally {
+      setDeploying(false);
+    }
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -296,7 +359,26 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
             return (
               <button
                 onClick={async () => {
-                  if (!isDeploying) await api.post(`/api/repos/${repo.id}/deploy`);
+                  if (!isDeploying) {
+                    setDeployEnvVars({});
+                    setEnvExample(null);
+                    setLoadingEnv(true);
+                    setShowDeployModal({ repoId: repo.id, repoName: repo.full_name });
+                    try {
+                      const response = await api.get(`/api/repos/${repo.id}/env-example`);
+                      if (response.ok) {
+                        const data = await response.json();
+                        if (data.env_example) {
+                          setEnvExample(data.env_example);
+                          setDeployEnvVars(data.env_example);
+                        }
+                      }
+                    } catch (error) {
+                      console.error('Failed to load env example:', error);
+                    } finally {
+                      setLoadingEnv(false);
+                    }
+                  }
                 }}
                 disabled={isDeploying}
                 style={{
@@ -581,6 +663,18 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
           )}
         </motion.div>
       </div>
+
+      {showDeployModal && (
+        <DeployModal
+          showDeployModal={showDeployModal}
+          onClose={() => setShowDeployModal(null)}
+          onDeploy={handleDeployConfirm}
+          envVars={deployEnvVars}
+          setEnvVars={setDeployEnvVars}
+          envExample={envExample}
+          loadingEnv={loadingEnv}
+        />
+      )}
     </div>
   );
 }
@@ -884,6 +978,258 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
                 }}
               >
                 {adding ? 'Adding...' : 'Add Repository'}
+              </button>
+            </div>
+          </>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function DeployModal({ 
+  showDeployModal, 
+  onClose, 
+  onDeploy, 
+  envVars, 
+  setEnvVars, 
+  envExample, 
+  loadingEnv 
+}: { 
+  showDeployModal: { repoId: number; repoName: string } | null;
+  onClose: () => void;
+  onDeploy: () => void;
+  envVars: Record<string, string>;
+  setEnvVars: (vars: Record<string, string>) => void;
+  envExample: Record<string, string> | null;
+  loadingEnv: boolean;
+}) {
+  const [newKey, setNewKey] = useState('');
+  const [newValue, setNewValue] = useState('');
+
+  if (!showDeployModal) return null;
+
+  const inputStyle: React.CSSProperties = {
+    flex: 1,
+    padding: '10px 12px',
+    border: '2px solid #1a1a1a',
+    background: '#ffffff',
+    color: '#1a1a1a',
+    fontSize: 12,
+    fontWeight: 700,
+    fontFamily: 'JetBrains Mono, monospace',
+    outline: 'none',
+  };
+
+  const valueStyle: React.CSSProperties = {
+    flex: 2,
+    padding: '10px 12px',
+    border: '2px solid #1a1a1a',
+    background: '#ffffff',
+    color: '#1a1a1a',
+    fontSize: 12,
+    fontWeight: 600,
+    fontFamily: 'JetBrains Mono, monospace',
+    outline: 'none',
+  };
+
+  const labelStyle: React.CSSProperties = {
+    display: 'block',
+    color: '#666',
+    fontSize: 11,
+    marginBottom: 8,
+    fontWeight: 800,
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0, 0, 0, 0.6)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+      }}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#ffffff',
+          border: '4px solid #1a1a1a',
+          padding: 32,
+          width: 600,
+          maxWidth: '90%',
+          maxHeight: '85vh',
+          overflow: 'auto',
+          boxShadow: '8px 8px 0 #1a1a1a',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 800, color: '#1a1a1a', textTransform: 'uppercase' }}>
+            Deploy {showDeployModal.repoName}
+          </h2>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: '2px solid #1a1a1a',
+              color: '#1a1a1a',
+              cursor: 'pointer',
+              fontWeight: 800,
+              fontSize: 20,
+              width: 32,
+              height: 32,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {envExample && (
+          <div style={{
+            padding: 12,
+            border: '2px dashed #1a1a1a',
+            background: '#f0fff4',
+            marginBottom: 20,
+          }}>
+            <p style={{ color: '#1a1a1a', fontWeight: 700, fontSize: 12, marginBottom: 4 }}>
+              ✅ Loaded from .env.example
+            </p>
+            <p style={{ color: '#666', fontWeight: 600, fontSize: 11 }}>
+              Edit values below or add new variables
+            </p>
+          </div>
+        )}
+
+        {loadingEnv ? (
+          <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
+            Loading environment variables...
+          </div>
+        ) : (
+          <>
+            <div style={{ marginBottom: 24 }}>
+              <label style={labelStyle}>Environment Variables</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+                {Object.entries(envVars).map(([key, value]) => (
+                  <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input
+                      value={key}
+                      readOnly
+                      style={{ ...inputStyle, background: '#f5f5f5' }}
+                    />
+                    <input
+                      value={value}
+                      onChange={(e) => setEnvVars({ ...envVars, [key]: e.target.value })}
+                      style={valueStyle}
+                    />
+                    <button
+                      onClick={() => {
+                        const copy = { ...envVars };
+                        delete copy[key];
+                        setEnvVars(copy);
+                      }}
+                      style={{
+                        padding: '10px 12px',
+                        border: '2px solid #1a1a1a',
+                        background: '#ffffff',
+                        color: '#1a1a1a',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        fontSize: 14,
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  value={newKey}
+                  onChange={(e) => setNewKey(e.target.value)}
+                  placeholder="KEY"
+                  style={inputStyle}
+                />
+                <input
+                  value={newValue}
+                  onChange={(e) => setNewValue(e.target.value)}
+                  placeholder="value"
+                  style={valueStyle}
+                />
+                <button
+                  onClick={() => {
+                    if (newKey.trim()) {
+                      setEnvVars({ ...envVars, [newKey.trim()]: newValue });
+                      setNewKey('');
+                      setNewValue('');
+                    }
+                  }}
+                  style={{
+                    padding: '10px 14px',
+                    border: '2px solid #1a1a1a',
+                    background: '#1a1a1a',
+                    color: '#ffffff',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button
+                onClick={onClose}
+                style={{
+                  flex: 1,
+                  padding: '14px',
+                  border: '3px solid #1a1a1a',
+                  background: '#ffffff',
+                  color: '#1a1a1a',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  fontSize: 13,
+                  boxShadow: '3px 3px 0 #1a1a1a',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={onDeploy}
+                style={{
+                  flex: 1,
+                  padding: '14px',
+                  border: '3px solid #1a1a1a',
+                  background: '#1a1a1a',
+                  color: '#ffffff',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  fontSize: 13,
+                  boxShadow: '3px 3px 0 #1a1a1a',
+                }}
+              >
+                Deploy
               </button>
             </div>
           </>
