@@ -25,8 +25,8 @@ import type { User } from './types.js';
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Load environment variables from .env files using robust parser
-loadEnvFiles();
+// Bun natively loads .env files — no manual parsing needed.
+// See: https://bun.sh/docs/runtime/env
 
 // ─── Authentication middleware ───────────────────────────────────────────────
 
