@@ -84,6 +84,9 @@ export async function getGitHubUser(accessToken: string): Promise<GitHubUser> {
   return (await response.json()) as GitHubUser;
 }
 
+// Get admin GitHub username from environment
+const ADMIN_GITHUB_LOGIN = process.env.ADMIN_GITHUB_LOGIN || '';
+
 export async function upsertUser(githubUser: GitHubUser, accessToken: string): Promise<User> {
   const encryptedToken = encrypt(accessToken);
 
@@ -105,20 +108,23 @@ export async function upsertUser(githubUser: GitHubUser, accessToken: string): P
     return result.rows[0];
   }
 
-  // Check if this is the first user (becomes admin)
+  // Determine role and access level
   const countResult = await query<{ count: string }>('SELECT COUNT(*) FROM users');
   const isFirstUser = parseInt(countResult.rows[0].count, 10) === 0;
-  const role = isFirstUser ? 'admin' : 'viewer';
+  const isAdminUser = ADMIN_GITHUB_LOGIN && githubUser.login.toLowerCase() === ADMIN_GITHUB_LOGIN.toLowerCase();
+  
+  const role = isFirstUser || isAdminUser ? 'admin' : 'viewer';
+  const accessLevel = isAdminUser ? 'approved' : 'pending';
 
   // Insert new user
   const result = await query<User>(
-    `INSERT INTO users (github_id, github_login, github_access_token, role)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO users (github_id, github_login, github_access_token, role, access_level)
+     VALUES ($1, $2, $3, $4, $5)
      RETURNING *`,
-    [githubUser.id, githubUser.login, encryptedToken, role]
+    [githubUser.id, githubUser.login, encryptedToken, role, accessLevel]
   );
 
-  console.log(`New user registered: ${githubUser.login} with role: ${role}`);
+  console.log(`New user registered: ${githubUser.login} with role: ${role} and access_level: ${accessLevel}`);
   return result.rows[0];
 }
 
