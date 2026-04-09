@@ -28,27 +28,54 @@ export async function installLocaltonet(): Promise<void> {
   console.log('   Set LOCALTONET_AUTH_TOKEN in your .env file to enable tunnels.');
 }
 
+/**
+ * Find the first auth token whose client is currently online.
+ * This is the Localtonet client running on the host machine.
+ */
+async function getOnlineClientToken(apiKey: string): Promise<string> {
+  const res = await fetch(`${LOCALTONET_API}/auth-tokens`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Localtonet auth-tokens API error ${res.status}: ${body}`);
+  }
+  const tokens = (await res.json()) as Array<{ token: string; clientIsOnline: boolean; name: string }>;
+  const online = tokens.find((t) => t.clientIsOnline);
+  if (!online) {
+    throw new Error('No Localtonet client is online. Make sure the Localtonet client is running on the host.');
+  }
+  return online.token;
+}
+
 export async function startTunnel(
   deploymentId: number,
   localPort: number,
-  authToken: string
+  apiKey: string
 ): Promise<{ tunnelId: string; tunnelUrl: string }> {
-  if (!authToken) {
+  if (!apiKey) {
     throw new Error('LOCALTONET_AUTH_TOKEN is required');
   }
 
   logNetwork(`Creating Localtonet tunnel for port ${localPort}`, { deployment_id: deploymentId });
 
+  // Find the online client token (the Localtonet client running on this machine)
+  const clientToken = await getOnlineClientToken(apiKey);
+
+  const serverCode = process.env.LOCALTONET_SERVER_CODE || 'fr2';
+
   const response = await fetch(`${LOCALTONET_API}/tunnels/http/random-subdomain`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${authToken}`,
+      Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
+      ip: '127.0.0.1',
       port: localPort,
       protocolType: 1,
-      name: `togit-deployment-${deploymentId}`,
+      authToken: clientToken,
+      serverCode,
     }),
   });
 
