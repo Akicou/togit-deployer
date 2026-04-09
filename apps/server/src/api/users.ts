@@ -149,6 +149,16 @@ export async function getSettings(req: Request): Promise<Response> {
   return Response.json({ settings });
 }
 
+export async function getSystemConfig(req: Request): Promise<Response> {
+  return Response.json({
+    config: {
+      github_oauth: !!process.env.GITHUB_APP_CLIENT_ID && !!process.env.GITHUB_APP_CLIENT_SECRET,
+      localtonet: !!process.env.LOCALTONET_AUTH_TOKEN,
+      admin_github_login: !!process.env.ADMIN_GITHUB_LOGIN,
+    },
+  });
+}
+
 export async function updateSettings(req: Request, currentUser: User): Promise<Response> {
   if (currentUser.role !== 'admin') {
     return Response.json({ error: 'Only admins can update settings' }, { status: 403 });

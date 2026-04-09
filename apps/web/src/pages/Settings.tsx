@@ -3,6 +3,12 @@ import { motion } from 'framer-motion';
 import { api } from '../lib/api';
 import type { User, Settings as SettingsType, AccessRequest } from '../types';
 
+interface SystemConfig {
+  github_oauth: boolean;
+  localtonet: boolean;
+  admin_github_login: boolean;
+}
+
 interface SettingsProps {
   user: User;
 }
@@ -17,11 +23,13 @@ export default function Settings({ user }: SettingsProps) {
   const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([]);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'general' | 'users' | 'access'>('general');
+  const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null);
 
   const isAdmin = user.role === 'admin';
 
   useEffect(() => {
     loadSettings();
+    loadSystemConfig();
     if (isAdmin) {
       loadUsers();
       loadAccessRequests();
@@ -63,6 +71,18 @@ export default function Settings({ user }: SettingsProps) {
       }
     } catch (error) {
       console.error('Failed to load access requests:', error);
+    }
+  }
+
+  async function loadSystemConfig() {
+    try {
+      const response = await api.get('/api/system/config');
+      if (response.ok) {
+        const data = await response.json();
+        setSystemConfig(data.config);
+      }
+    } catch (error) {
+      console.error('Failed to load system config:', error);
     }
   }
 
@@ -295,21 +315,83 @@ export default function Settings({ user }: SettingsProps) {
               Environment
             </h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {[
-                ['Node Environment', import.meta.env.MODE || 'development'],
-                ['GitHub OAuth', import.meta.env.GITHUB_APP_CLIENT_ID ? 'Configured' : 'Not Configured'],
-                ['Localtonet', import.meta.env.LOCALTONET_AUTH_TOKEN ? 'Configured' : 'Not Configured'],
-                ['Database', 'Connected'],
-              ].map(([label, value]) => (
-                <div key={label} style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: 12, border: '2px solid #1a1a1a', background: '#f5f5f5',
-                }}>
-                  <span style={{ color: '#666', fontWeight: 700 }}>{label}</span>
-                  <span style={{ color: '#1a1a1a', fontWeight: 700 }}>{value}</span>
-                </div>
-              ))}
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: 12, border: '2px solid #1a1a1a', background: '#f5f5f5',
+              }}>
+                <span style={{ color: '#666', fontWeight: 700 }}>GitHub OAuth</span>
+                <span style={{ color: systemConfig?.github_oauth ? '#1a1a1a' : '#cc0000', fontWeight: 700 }}>
+                  {systemConfig?.github_oauth ? '✅ Configured' : '❌ Not Configured'}
+                </span>
+              </div>
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: 12, border: '2px solid #1a1a1a', background: '#f5f5f5',
+              }}>
+                <span style={{ color: '#666', fontWeight: 700 }}>Localtonet Token</span>
+                <span style={{ color: systemConfig?.localtonet ? '#1a1a1a' : '#cc0000', fontWeight: 700 }}>
+                  {systemConfig?.localtonet ? '✅ Configured' : '❌ Not Configured'}
+                </span>
+              </div>
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: 12, border: '2px solid #1a1a1a', background: '#f5f5f5',
+              }}>
+                <span style={{ color: '#666', fontWeight: 700 }}>Admin User</span>
+                <span style={{ color: systemConfig?.admin_github_login ? '#1a1a1a' : '#cc0000', fontWeight: 700 }}>
+                  {systemConfig?.admin_github_login ? '✅ Configured' : '❌ Not Configured'}
+                </span>
+              </div>
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: 12, border: '2px solid #1a1a1a', background: '#f5f5f5',
+              }}>
+                <span style={{ color: '#666', fontWeight: 700 }}>Database</span>
+                <span style={{ color: '#1a1a1a', fontWeight: 700 }}>✅ Connected</span>
+              </div>
             </div>
+            
+            {/* Localtonet Info */}
+            {!systemConfig?.localtonet && (
+              <div style={{
+                marginTop: 20,
+                padding: 16,
+                border: '2px dashed #cc0000',
+                background: '#fff5f5',
+              }}>
+                <p style={{ color: '#cc0000', fontWeight: 700, fontSize: 13, marginBottom: 8 }}>
+                  ⚠️ Localtonet token not configured
+                </p>
+                <p style={{ color: '#666', fontWeight: 600, fontSize: 12, marginBottom: 12 }}>
+                  Deployments require Localtonet for tunneling. Add LOCALTONET_AUTH_TOKEN to your .env file:
+                </p>
+                <ol style={{ color: '#666', fontWeight: 600, fontSize: 11, paddingLeft: 20, margin: 0 }}>
+                  <li>Get your token from <a href="https://localtonet.com" target="_blank" rel="noopener noreferrer" style={{ color: '#1a1a1a', textDecoration: 'underline' }}>localtonet.com</a></li>
+                  <li>Add to .env: <code style={{ background: '#1a1a1a', color: '#fff', padding: '2px 6px', borderRadius: 3 }}>LOCALTONET_AUTH_TOKEN=your_token_here</code></li>
+                  <li>Restart the server</li>
+                </ol>
+              </div>
+            )}
+            
+            {!systemConfig?.github_oauth && (
+              <div style={{
+                marginTop: 20,
+                padding: 16,
+                border: '2px dashed #cc0000',
+                background: '#fff5f5',
+              }}>
+                <p style={{ color: '#cc0000', fontWeight: 700, fontSize: 13, marginBottom: 8 }}>
+                  ⚠️ GitHub OAuth not configured
+                </p>
+                <p style={{ color: '#666', fontWeight: 600, fontSize: 12, marginBottom: 12 }}>
+                  Add these to your .env file:
+                </p>
+                <code style={{ display: 'block', background: '#1a1a1a', color: '#fff', padding: 8, borderRadius: 3, fontSize: 11, fontWeight: 600 }}>
+                  GITHUB_APP_CLIENT_ID=your_client_id<br />
+                  GITHUB_APP_CLIENT_SECRET=your_client_secret
+                </code>
+              </div>
+            )}
           </motion.div>
         </div>
       )}

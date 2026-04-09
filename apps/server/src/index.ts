@@ -258,6 +258,10 @@ async function handleRequest(req: Request): Promise<Response> {
       return usersApi.updateSettings(req as any, user);
     }
 
+    if (path === '/api/system/config' && req.method === 'GET') {
+      return usersApi.getSystemConfig(req as any);
+    }
+
     // Access request routes
     // POST /api/access-requests — create (allow restricted users)
     const authResultForAR = await requireAuth(req, { allowRestricted: true });
