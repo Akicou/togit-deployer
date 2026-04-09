@@ -93,12 +93,26 @@ export async function addRepo(req: Request, user: User): Promise<Response> {
   const { owner, name, root_path, deploy_mode, watch_branch, service_name } = parsed.data;
   const full_name = `${owner}/${name}`;
 
+  // Check if this exact (full_name, service_name) combination already exists
+  const existingRepo = await query<Repository>(
+    `SELECT id, full_name, service_name FROM repositories
+     WHERE full_name = $1 AND service_name = $2`,
+    [full_name, service_name]
+  );
+
+  if (existingRepo.rows.length > 0) {
+    return Response.json(
+      {
+        error: `Repository '${full_name}' with service '${service_name}' already exists. To deploy different parts of this repo (e.g., /frontend and /backend), use different service names like 'frontend' and 'backend'. Or use PATCH /api/repos/${existingRepo.rows[0].id} to update the existing service.`
+      },
+      { status: 409 }
+    );
+  }
+
   try {
     const result = await query<Repository>(
       `INSERT INTO repositories (owner, name, full_name, root_path, deploy_mode, watch_branch, added_by, service_name)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       ON CONFLICT (full_name, service_name) DO UPDATE
-       SET root_path = $4, deploy_mode = $5, watch_branch = $6
        RETURNING *`,
       [owner, name, full_name, root_path, deploy_mode, watch_branch, user.id, service_name]
     );
