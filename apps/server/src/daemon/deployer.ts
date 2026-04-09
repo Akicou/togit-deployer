@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { query } from '../db/client.js';
 import { logBuild, logDocker, logSystem, logError } from '../logger/index.js';
-import { createTunnel, startTunnel, updateTunnelPort } from './localtonet.js';
+import { createTunnel, startTunnel, updateTunnelPort, stopTunnel } from './localtonet.js';
 import type { TunnelType } from './localtonet.js';
 import { rollbackRepo } from './rollback.js';
 import { decryptAccessToken } from '../github/oauth.js';
@@ -122,6 +122,115 @@ export async function cleanupInterruptedBuilds(): Promise<void> {
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     logError(`Cleanup failed: ${errorMsg}`);
+  }
+
+  // Restore running deployments
+  await restoreRunningDeployments();
+}
+
+/**
+ * Restore deployments that were running before server restart.
+ * Checks if containers are still running and restarts tunnels.
+ */
+async function restoreRunningDeployments(): Promise<void> {
+  try {
+    logSystem('Restoring running deployments...');
+
+    const runningDeployments = await query<Deployment>(
+      `SELECT * FROM deployments WHERE status = 'running' ORDER BY id DESC`
+    );
+
+    if (runningDeployments.rows.length === 0) {
+      logSystem('No running deployments to restore');
+      return;
+    }
+
+    let restored = 0;
+    let failed = 0;
+
+    for (const deployment of runningDeployments.rows) {
+      try {
+        if (!deployment.container_id) {
+          // No container ID - mark as failed
+          await query(
+            `UPDATE deployments SET status = 'failed', error_message = $1, finished_at = NOW() WHERE id = $2`,
+            ['Missing container ID after server restart', deployment.id]
+          );
+          failed++;
+          continue;
+        }
+
+        // Check if container exists and is running
+        const container = docker.getContainer(deployment.container_id);
+        let containerInfo: any;
+
+        try {
+          containerInfo = await container.inspect();
+        } catch (err: unknown) {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          if (errorMsg.includes('No such container')) {
+            // Container doesn't exist - mark as failed
+            await query(
+              `UPDATE deployments SET status = 'failed', error_message = $1, finished_at = NOW() WHERE id = $2`,
+              ['Container missing after server restart', deployment.id]
+            );
+            logSystem(`Container ${deployment.container_id} not found for deployment ${deployment.id} - marked as failed`);
+            failed++;
+            continue;
+          }
+          throw err;
+        }
+
+        if (!containerInfo.State.Running) {
+          // Container exists but not running - try to start it
+          logSystem(`Restarting stopped container ${deployment.container_id} for deployment ${deployment.id}`);
+          await container.start();
+
+          // Wait a bit for it to start
+          await new Promise(r => setTimeout(r, 2000));
+
+          // Verify it's running
+          const newInfo = await container.inspect() as any;
+          if (!newInfo.State.Running) {
+            await query(
+              `UPDATE deployments SET status = 'failed', error_message = $1, finished_at = NOW() WHERE id = $2`,
+              ['Container failed to restart after server restart', deployment.id]
+            );
+            logSystem(`Failed to restart container ${deployment.container_id} for deployment ${deployment.id}`);
+            failed++;
+            continue;
+          }
+        }
+
+        // Container is running - restart tunnel if exists
+        if (deployment.localtonet_tunnel_id) {
+          const authToken = process.env.LOCALTONET_AUTH_TOKEN || '';
+          if (authToken) {
+            try {
+              await startTunnel(deployment.localtonet_tunnel_id, authToken);
+              logSystem(`Restored tunnel ${deployment.localtonet_tunnel_id} for deployment ${deployment.id}`);
+            } catch (err: unknown) {
+              const errorMsg = err instanceof Error ? err.message : String(err);
+              logSystem(`Warning: Could not restart tunnel for deployment ${deployment.id}: ${errorMsg}`);
+              // Don't mark as failed - container is still running
+            }
+          }
+        }
+
+        logSystem(`Restored deployment ${deployment.id} (container: ${deployment.container_id})`);
+        restored++;
+
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        logError(`Failed to restore deployment ${deployment.id}: ${errorMsg}`);
+        failed++;
+      }
+    }
+
+    logSystem(`Restore completed: ${restored} restored, ${failed} failed out of ${runningDeployments.rows.length} total`);
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    logError(`Failed to restore running deployments: ${errorMsg}`);
   }
 }
 
