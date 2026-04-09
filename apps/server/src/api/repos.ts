@@ -217,6 +217,15 @@ export async function triggerDeploy(req: Request, user: User, repoId: number): P
 
   const repo = repoResult.rows[0];
 
+  // Block if a deployment is already in progress
+  const inProgress = await query<{ id: number }>(
+    `SELECT id FROM deployments WHERE repo_id = $1 AND status IN ('pending', 'building') LIMIT 1`,
+    [repoId]
+  );
+  if (inProgress.rows.length > 0) {
+    return Response.json({ error: 'A deployment is already in progress for this repository' }, { status: 409 });
+  }
+
   // Get the latest ref based on deploy mode
   let ref: string;
   let refType: 'release' | 'commit';

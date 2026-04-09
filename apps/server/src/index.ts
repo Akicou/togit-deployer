@@ -178,6 +178,9 @@ async function handleRequest(req: Request): Promise<Response> {
     const deployIdMatch = path.match(/^\/api\/deployments\/(\d+)$/);
     if (deployIdMatch) {
       const deploymentId = parseInt(deployIdMatch[1], 10);
+      if (req.method === 'DELETE') {
+        return deploymentsApi.deleteDeployment(req as any, deploymentId, user);
+      }
       return deploymentsApi.getDeployment(req as any, deploymentId);
     }
 

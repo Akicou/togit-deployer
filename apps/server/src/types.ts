@@ -33,6 +33,7 @@ export interface Deployment {
   container_id: string | null;
   tunnel_url: string | null;
   tunnel_port: number | null;
+  localtonet_tunnel_id: string | null;
   error_message: string | null;
   started_at: Date;
   finished_at: Date | null;

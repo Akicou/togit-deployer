@@ -1,177 +1,104 @@
-import { spawn, type ChildProcess } from 'child_process';
 import { logNetwork, logSystem, logError } from '../logger/index.js';
 import { query } from '../db/client.js';
 
-// Store child processes for each deployment
-const tunnelProcesses = new Map<number, ChildProcess>();
+const LOCALTONET_API = 'https://localtonet.com/api/v2';
+
+interface LocaltonetTunnel {
+  id: number;
+  url: string;
+  status: number;
+}
 
 export async function checkLocaltonetInstalled(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const proc = spawn('which', ['localtonet']);
-    proc.on('close', (code) => {
-      resolve(code === 0);
-    });
-    proc.on('error', () => {
-      resolve(false);
-    });
-  });
+  return !!(process.env.LOCALTONET_AUTH_TOKEN);
 }
 
 export async function installLocaltonet(): Promise<void> {
-  logSystem('Installing Localtonet...');
-
-  return new Promise((resolve, reject) => {
-    const proc = spawn('curl', ['-fsSL', 'https://localtonet.com/install.sh', '|', 'sh'], {
-      shell: true,
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    proc.stdout?.on('data', (data) => {
-      stdout += data.toString();
-      logNetwork(`Localtonet install: ${data.toString().trim()}`);
-    });
-
-    proc.stderr?.on('data', (data) => {
-      stderr += data.toString();
-      logNetwork(`Localtonet install error: ${data.toString().trim()}`);
-    });
-
-    proc.on('close', async (code) => {
-      if (code === 0) {
-        logSystem('Localtonet installed successfully');
-        resolve();
-      } else {
-        const errorMsg = `Localtonet install failed with code ${code}: ${stderr}`;
-        logError(errorMsg);
-        reject(new Error(errorMsg));
-      }
-    });
-
-    proc.on('error', (err) => {
-      const errorMsg = `Failed to run Localtonet install: ${err.message}`;
-      logError(errorMsg);
-      reject(new Error(errorMsg));
-    });
-  });
+  throw new Error(
+    'Localtonet now uses the HTTP API. Set LOCALTONET_AUTH_TOKEN in your .env file.'
+  );
 }
 
 export async function startTunnel(
   deploymentId: number,
   localPort: number,
-  protocol: 'http' | 'tcp' | 'udp' = 'http',
   authToken: string
-): Promise<string> {
-  const authTokenEnv = process.env.LOCALTONET_AUTH_TOKEN || authToken;
-  
-  if (!authTokenEnv) {
+): Promise<{ tunnelId: string; tunnelUrl: string }> {
+  if (!authToken) {
     throw new Error('LOCALTONET_AUTH_TOKEN is required');
   }
 
-  logNetwork(`Starting Localtonet tunnel for port ${localPort}`, { deployment_id: deploymentId });
+  logNetwork(`Creating Localtonet tunnel for port ${localPort}`, { deployment_id: deploymentId });
 
-  // Build command based on protocol
-  let args: string[];
-  if (protocol === 'http') {
-    args = ['http', '--authtoken', authTokenEnv, '--port', localPort.toString()];
-  } else {
-    args = [protocol, '--authtoken', authTokenEnv, '--port', localPort.toString()];
+  const response = await fetch(`${LOCALTONET_API}/tunnels/http/random-subdomain`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${authToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      port: localPort,
+      authToken,
+      protocolType: 1,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Localtonet API error ${response.status}: ${body}`);
   }
 
-  return new Promise((resolve, reject) => {
-    const proc = spawn('localtonet', args);
+  const tunnel = (await response.json()) as LocaltonetTunnel;
 
-    tunnelProcesses.set(deploymentId, proc);
+  if (!tunnel.url) {
+    throw new Error('Localtonet API returned no tunnel URL');
+  }
 
-    let stdout = '';
-    let stderr = '';
-    let tunnelUrl = '';
-    let resolved = false;
+  logSystem(`Tunnel created: ${tunnel.url}`, { deployment_id: deploymentId });
 
-    // Parse stdout for tunnel URL
-    const urlRegex = /https?:\/\/[^\s]+\.localtonet\.com/;
-
-    proc.stdout?.on('data', async (data) => {
-      const text = data.toString();
-      stdout += text;
-      
-      await logNetwork(text.trim(), { deployment_id: deploymentId });
-
-      // Extract tunnel URL
-      const match = text.match(urlRegex);
-      if (match && !resolved) {
-        tunnelUrl = match[0];
-        resolved = true;
-        logSystem(`Tunnel established: ${tunnelUrl}`, { deployment_id: deploymentId });
-        resolve(tunnelUrl);
-      }
-    });
-
-    proc.stderr?.on('data', async (data) => {
-      const text = data.toString();
-      stderr += text;
-      await logNetwork(`Localtonet stderr: ${text.trim()}`, { deployment_id: deploymentId });
-    });
-
-    proc.on('close', async (code) => {
-      tunnelProcesses.delete(deploymentId);
-      
-      if (code !== 0 && !resolved) {
-        const errorMsg = `Localtonet tunnel exited with code ${code}: ${stderr}`;
-        await logError(errorMsg, { deployment_id: deploymentId });
-        reject(new Error(errorMsg));
-      }
-    });
-
-    proc.on('error', async (err) => {
-      tunnelProcesses.delete(deploymentId);
-      const errorMsg = `Localtonet tunnel error: ${err.message}`;
-      await logError(errorMsg, { deployment_id: deploymentId });
-      reject(new Error(errorMsg));
-    });
-
-    // Timeout after 30 seconds if no URL found
-    setTimeout(() => {
-      if (!resolved) {
-        stopTunnel(deploymentId);
-        reject(new Error('Localtonet tunnel timeout - no URL received'));
-      }
-    }, 30000);
-  });
+  return { tunnelId: String(tunnel.id), tunnelUrl: tunnel.url };
 }
 
-export async function stopTunnel(deploymentId: number): Promise<void> {
-  const proc = tunnelProcesses.get(deploymentId);
-  
-  if (proc) {
-    logNetwork(`Stopping Localtonet tunnel for deployment ${deploymentId}`);
-    proc.kill('SIGTERM');
-    tunnelProcesses.delete(deploymentId);
-  }
+export async function stopTunnel(localtonetTunnelId: string, authToken: string): Promise<void> {
+  if (!authToken || !localtonetTunnelId) return;
 
-  // Also try to find and kill any orphan processes
+  logNetwork(`Deleting Localtonet tunnel ${localtonetTunnelId}`);
+
   try {
-    const killProc = spawn('pkill', ['-f', `localtonet.*${deploymentId}`]);
-    await new Promise<void>((resolve) => {
-      killProc.on('close', () => resolve());
+    const response = await fetch(`${LOCALTONET_API}/tunnels/${localtonetTunnelId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${authToken}` },
     });
-  } catch {
-    // Ignore pkill errors
+
+    if (!response.ok && response.status !== 404) {
+      const body = await response.text();
+      logError(`Failed to delete tunnel ${localtonetTunnelId}: ${response.status} ${body}`);
+    }
+  } catch (error) {
+    logError(`Error deleting tunnel ${localtonetTunnelId}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
 export async function stopAllTunnels(): Promise<void> {
+  const authToken = process.env.LOCALTONET_AUTH_TOKEN || '';
+  if (!authToken) return;
+
   logSystem('Stopping all Localtonet tunnels...');
-  
-  for (const [deploymentId, proc] of tunnelProcesses) {
-    logNetwork(`Stopping tunnel for deployment ${deploymentId}`);
-    proc.kill('SIGTERM');
+
+  try {
+    const result = await query<{ localtonet_tunnel_id: string }>(
+      `SELECT localtonet_tunnel_id FROM deployments
+       WHERE status = 'running' AND localtonet_tunnel_id IS NOT NULL`
+    );
+
+    for (const row of result.rows) {
+      await stopTunnel(row.localtonet_tunnel_id, authToken);
+    }
+  } catch (error) {
+    logError(`Error stopping tunnels: ${error instanceof Error ? error.message : String(error)}`);
   }
-  
-  tunnelProcesses.clear();
 }
 
-export function getActiveTunnels(): number[] {
-  return Array.from(tunnelProcesses.keys());
+export function getActiveTunnels(): string[] {
+  return [];
 }

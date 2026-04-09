@@ -1,6 +1,7 @@
 import Docker from 'dockerode';
 import { spawn } from 'child_process';
 import path from 'path';
+
 import fs from 'fs';
 import { query } from '../db/client.js';
 import { logBuild, logDocker, logNetwork, logSystem, logError } from '../logger/index.js';
@@ -114,14 +115,14 @@ export async function deploy(
       throw new Error('LOCALTONET_AUTH_TOKEN is not configured');
     }
 
-    const tunnelUrl = await startTunnel(deployment.id, hostPort, 'http', authToken);
+    const { tunnelId, tunnelUrl } = await startTunnel(deployment.id, hostPort, authToken);
 
     // Update deployment status
     await query(
-      `UPDATE deployments 
-       SET status = 'running', container_id = $1, tunnel_url = $2, tunnel_port = $3, finished_at = NOW()
-       WHERE id = $4`,
-      [container.id, tunnelUrl, hostPort, deployment.id]
+      `UPDATE deployments
+       SET status = 'running', container_id = $1, tunnel_url = $2, tunnel_port = $3, localtonet_tunnel_id = $4, finished_at = NOW()
+       WHERE id = $5`,
+      [container.id, tunnelUrl, hostPort, tunnelId, deployment.id]
     );
 
     logSystem(`Deployment ${deployment.id} completed successfully: ${tunnelUrl}`, {

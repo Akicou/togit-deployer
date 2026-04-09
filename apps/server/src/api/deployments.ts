@@ -1,5 +1,5 @@
 import { query } from '../db/client.js';
-import type { Deployment } from '../types.js';
+import type { Deployment, User } from '../types.js';
 
 export async function getDeployment(req: Request, deploymentId: number): Promise<Response> {
   const result = await query<Deployment & { repo_name: string; repo_full_name: string; triggered_by_login: string | null }>(
@@ -62,6 +62,48 @@ export async function getDeploymentLogs(req: Request, deploymentId: number): Pro
     limit,
     offset,
   });
+}
+
+export async function deleteDeployment(req: Request, deploymentId: number, user: User): Promise<Response> {
+  if (user.role === 'viewer') {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const result = await query<Deployment & { localtonet_tunnel_id: string | null }>(
+    'SELECT * FROM deployments WHERE id = $1',
+    [deploymentId]
+  );
+
+  if (result.rows.length === 0) {
+    return Response.json({ error: 'Deployment not found' }, { status: 404 });
+  }
+
+  const deployment = result.rows[0];
+
+  // Stop Docker container
+  if (deployment.container_id) {
+    try {
+      const { stopContainer } = await import('../daemon/deployer.js');
+      await stopContainer(deployment.container_id);
+    } catch (error) {
+      console.error('Error stopping container:', error);
+    }
+  }
+
+  // Delete Localtonet tunnel
+  const authToken = process.env.LOCALTONET_AUTH_TOKEN || '';
+  if (deployment.localtonet_tunnel_id && authToken) {
+    try {
+      const { stopTunnel } = await import('../daemon/localtonet.js');
+      await stopTunnel(deployment.localtonet_tunnel_id, authToken);
+    } catch (error) {
+      console.error('Error stopping tunnel:', error);
+    }
+  }
+
+  await query('DELETE FROM deployments WHERE id = $1', [deploymentId]);
+
+  return Response.json({ success: true });
 }
 
 export async function listRecentDeployments(req: Request): Promise<Response> {

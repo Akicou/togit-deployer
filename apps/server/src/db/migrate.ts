@@ -86,6 +86,9 @@ const migrations = [
 
   // Add watch_branch to existing repositories
   `ALTER TABLE repositories ADD COLUMN IF NOT EXISTS watch_branch TEXT NOT NULL DEFAULT 'main'`,
+
+  // Add localtonet_tunnel_id to store the API tunnel ID for clean deletion
+  `ALTER TABLE deployments ADD COLUMN IF NOT EXISTS localtonet_tunnel_id TEXT`,
 ];
 
 export async function runMigrations(): Promise<void> {

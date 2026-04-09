@@ -44,6 +44,15 @@ export async function getRepoAccessToken(repoId: number): Promise<string> {
 }
 
 export async function checkForUpdates(repo: Repository): Promise<{ hasUpdate: boolean; ref: string; refType: 'release' | 'commit' }> {
+  // Skip if a deployment is already in progress
+  const inProgress = await query<{ id: number }>(
+    `SELECT id FROM deployments WHERE repo_id = $1 AND status IN ('pending', 'building') LIMIT 1`,
+    [repo.id]
+  );
+  if (inProgress.rows.length > 0) {
+    return { hasUpdate: false, ref: '', refType: 'release' };
+  }
+
   const accessToken = await getRepoAccessToken(repo.id);
 
   if (repo.deploy_mode === 'release') {

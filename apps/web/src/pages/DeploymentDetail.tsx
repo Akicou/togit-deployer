@@ -1,18 +1,20 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '../lib/api';
 import { useWebSocket } from '../hooks/useWebSocket';
 import LogViewer from '../components/LogViewer';
 import DeployBadge from '../components/DeployBadge';
-import type { Deployment, Log } from '../types';
+import type { Deployment, Log, User } from '../types';
 
-export default function DeploymentDetail() {
+export default function DeploymentDetail({ user }: { user: User }) {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [deployment, setDeployment] = useState<Deployment | null>(null);
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<Log[]>([]);
   const [logsLoading, setLogsLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
 
   const { logs: liveLogs, connected } = useWebSocket(parseInt(id || '0', 10));
 
@@ -40,6 +42,21 @@ export default function DeploymentDetail() {
       console.error('Failed to load deployment:', error);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!deployment || !confirm('Delete this deployment? This will stop the container and tunnel.')) return;
+    setDeleting(true);
+    try {
+      const response = await api.delete(`/api/deployments/${id}`);
+      if (response.ok) {
+        navigate(`/repositories/${deployment.repo_id}`);
+      }
+    } catch (error) {
+      console.error('Failed to delete deployment:', error);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -111,6 +128,24 @@ export default function DeploymentDetail() {
               </span>
             </div>
           </div>
+          {(user.role === 'admin' || user.role === 'deployer') && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              style={{
+                padding: '8px 16px',
+                borderRadius: 8,
+                border: '1px solid rgba(248, 81, 73, 0.4)',
+                background: deleting ? '#484f58' : 'rgba(248, 81, 73, 0.1)',
+                color: deleting ? '#8b949e' : '#f85149',
+                fontWeight: 600,
+                cursor: deleting ? 'not-allowed' : 'pointer',
+                fontSize: 14,
+              }}
+            >
+              {deleting ? 'Deleting...' : 'Delete'}
+            </button>
+          )}
         </div>
       </motion.div>
 

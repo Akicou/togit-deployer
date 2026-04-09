@@ -75,7 +75,7 @@ export default function App() {
             <Route path="/dashboard" element={<Dashboard user={user} />} />
             <Route path="/repositories" element={<Repositories user={user} />} />
             <Route path="/repositories/:id" element={<Repositories user={user} />} />
-            <Route path="/deployments/:id" element={<DeploymentDetail />} />
+            <Route path="/deployments/:id" element={<DeploymentDetail user={user} />} />
             <Route path="/logs" element={<Logs />} />
             <Route path="/settings" element={<Settings user={user} />} />
           </Routes>

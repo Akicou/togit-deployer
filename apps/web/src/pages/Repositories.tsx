@@ -269,24 +269,29 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
             </div>
           </div>
 
-          {(user.role === 'admin' || user.role === 'deployer') && (
-            <button
-              onClick={async () => {
-                await api.post(`/api/repos/${repo.id}/deploy`);
-              }}
-              style={{
-                padding: '10px 20px',
-                borderRadius: 8,
-                border: 'none',
-                background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                color: 'white',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              Deploy Now
-            </button>
-          )}
+          {(user.role === 'admin' || user.role === 'deployer') && (() => {
+            const isDeploying = repo.last_deployment_status === 'pending' || repo.last_deployment_status === 'building';
+            return (
+              <button
+                onClick={async () => {
+                  if (!isDeploying) await api.post(`/api/repos/${repo.id}/deploy`);
+                }}
+                disabled={isDeploying}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: isDeploying ? '#484f58' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                  color: 'white',
+                  fontWeight: 600,
+                  cursor: isDeploying ? 'not-allowed' : 'pointer',
+                  opacity: isDeploying ? 0.7 : 1,
+                }}
+              >
+                {isDeploying ? 'Deploying...' : 'Deploy Now'}
+              </button>
+            );
+          })()}
         </div>
       </motion.div>
 
