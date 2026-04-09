@@ -260,6 +260,7 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
     deploy_mode: repo.deploy_mode,
     watch_branch: repo.watch_branch ?? 'main',
     enabled: repo.enabled,
+    service_name: repo.service_name ?? 'app',
     container_port: repo.container_port ?? 3000,
     tunnel_type: (repo.tunnel_type ?? 'random') as 'random' | 'subdomain' | 'custom-domain',
     tunnel_subdomain: repo.tunnel_subdomain ?? '',
@@ -541,6 +542,29 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
           <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginBottom: 24, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             Configuration
           </h2>
+
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Service Name
+            </label>
+            <input
+              type="text"
+              value={config.service_name}
+              onChange={(e) => setConfig({ ...config, service_name: e.target.value })}
+              style={{
+                width: '100%',
+                padding: '12px 14px',
+                border: '2px solid #1a1a1a',
+                background: '#f5f5f5',
+                color: '#1a1a1a',
+                fontSize: 14,
+                fontWeight: 600,
+                outline: 'none',
+              }}
+              placeholder="app"
+            />
+            <p style={{ color: '#999', fontSize: 11, marginTop: 4, fontWeight: 600 }}>For monorepo: use different names (frontend, backend, api, web)</p>
+          </div>
 
           <div style={{ marginBottom: 20 }}>
             <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -895,6 +919,7 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<any>(null);
   const [config, setConfig] = useState({
+    service_name: 'app',
     root_path: '/',
     deploy_mode: 'release' as 'release' | 'commit',
     watch_branch: 'main',
@@ -1113,6 +1138,20 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
                   Change
                 </button>
               </div>
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={labelStyle}>Service Name</label>
+              <input
+                type="text"
+                value={config.service_name}
+                onChange={(e) => setConfig({ ...config, service_name: e.target.value })}
+                style={inputStyle}
+                placeholder="app"
+              />
+              <p style={{ color: '#999', fontSize: 11, marginTop: 4, fontWeight: 600 }}>
+                For monorepo: use different names (frontend, backend, api, web)
+              </p>
             </div>
 
             <div style={{ marginBottom: 20 }}>
