@@ -1,0 +1,136 @@
+import { query } from '../db/client.js';
+import { WebSocketServer, WebSocket } from 'ws';
+import type { Log, WebSocketLogMessage } from '../types.js';
+
+// Store active WebSocket connections by deployment_id
+const wsConnections = new Map<number | 'global', Set<WebSocket>>();
+
+export function initWebSocketServer(server: any): void {
+  const wss = new WebSocketServer({ server, path: '/ws/logs' });
+
+  wss.on('connection', (ws, req) => {
+    const urlStr = req.url || '/';
+    const url = new URL(urlStr, 'http://localhost');
+    const deploymentId = url.searchParams.get('deploymentId');
+    
+    let key: number | 'global' = 'global';
+    if (deploymentId && deploymentId !== 'all') {
+      key = parseInt(deploymentId, 10);
+      if (isNaN(key)) {
+        key = 'global';
+      }
+    }
+
+    if (!wsConnections.has(key)) {
+      wsConnections.set(key, new Set());
+    }
+    wsConnections.get(key)!.add(ws);
+
+    console.log(`WebSocket connected: deploymentId=${key}, total=${wsConnections.get(key)!.size}`);
+
+    ws.on('close', () => {
+      wsConnections.get(key)?.delete(ws);
+      if (wsConnections.get(key)?.size === 0) {
+        wsConnections.delete(key);
+      }
+    });
+
+    ws.on('error', (error) => {
+      console.error('WebSocket error:', error);
+      wsConnections.get(key)?.delete(ws);
+    });
+  });
+}
+
+export async function log(
+  category: Log['category'],
+  level: Log['level'],
+  message: string,
+  options: {
+    deployment_id?: number | null;
+    repo_id?: number | null;
+    meta?: Record<string, unknown>;
+  } = {}
+): Promise<void> {
+  const { deployment_id = null, repo_id = null, meta = null } = options;
+
+  // Insert into database
+  try {
+    const result = await query<{ id: number; created_at: Date }>(
+      `INSERT INTO logs (deployment_id, repo_id, category, level, message, meta)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, created_at`,
+      [deployment_id, repo_id, category, level, message, meta ? JSON.stringify(meta) : null]
+    );
+
+    // Create WebSocket message
+    const wsMessage: WebSocketLogMessage = {
+      level,
+      category,
+      message,
+      created_at: result.rows[0].created_at.toISOString(),
+    };
+    if (deployment_id) {
+      wsMessage.deployment_id = deployment_id;
+    }
+
+    // Stream to WebSocket subscribers
+    broadcastLog(wsMessage, deployment_id);
+
+    // Also log to stdout in development
+    if (process.env.NODE_ENV === 'development') {
+      const prefix = `[${category.toUpperCase()}]`;
+      if (level === 'error') {
+        console.error(prefix, message);
+      } else if (level === 'warn') {
+        console.warn(prefix, message);
+      } else {
+        console.log(prefix, message);
+      }
+    }
+  } catch (error) {
+    console.error('Failed to insert log:', error);
+  }
+}
+
+function broadcastLog(message: WebSocketLogMessage, deploymentId: number | null): void {
+  const messageStr = JSON.stringify(message);
+
+  // Broadcast to specific deployment subscribers
+  if (deploymentId && wsConnections.has(deploymentId)) {
+    for (const ws of wsConnections.get(deploymentId)!) {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(messageStr);
+      }
+    }
+  }
+
+  // Broadcast to global subscribers
+  if (wsConnections.has('global')) {
+    for (const ws of wsConnections.get('global')!) {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(messageStr);
+      }
+    }
+  }
+}
+
+export function logBuild(message: string, options?: Partial<Pick<Log, 'deployment_id' | 'repo_id'>>) {
+  return log('build', 'info', message, options);
+}
+
+export function logNetwork(message: string, options?: Partial<Pick<Log, 'deployment_id' | 'repo_id'>>) {
+  return log('network', 'info', message, options);
+}
+
+export function logDocker(message: string, options?: Partial<Pick<Log, 'deployment_id' | 'repo_id'>>) {
+  return log('docker', 'info', message, options);
+}
+
+export function logSystem(message: string, options?: Partial<Pick<Log, 'deployment_id' | 'repo_id'>>) {
+  return log('system', 'info', message, options);
+}
+
+export function logError(message: string, options?: Partial<Pick<Log, 'deployment_id' | 'repo_id'>> & { meta?: Record<string, unknown> }) {
+  return log('system', 'error', message, { ...options, meta: options?.meta });
+}
