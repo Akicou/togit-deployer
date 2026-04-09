@@ -1,45 +1,32 @@
 import { query } from '../db/client.js';
-import { WebSocketServer, WebSocket } from 'ws';
+import type { ServerWebSocket } from 'bun';
 import type { Log, WebSocketLogMessage } from '../types.js';
 
+export type WSData = { key: number | 'global' };
+
 // Store active WebSocket connections by deployment_id
-const wsConnections = new Map<number | 'global', Set<WebSocket>>();
+const wsConnections = new Map<number | 'global', Set<ServerWebSocket<WSData>>>();
 
-export function initWebSocketServer(server: any): void {
-  const wss = new WebSocketServer({ server, path: '/ws/logs' });
+export function handleWSOpen(ws: ServerWebSocket<WSData>): void {
+  const { key } = ws.data;
+  if (!wsConnections.has(key)) {
+    wsConnections.set(key, new Set());
+  }
+  wsConnections.get(key)!.add(ws);
+  console.log(`WebSocket connected: deploymentId=${key}, total=${wsConnections.get(key)!.size}`);
+}
 
-  wss.on('connection', (ws, req) => {
-    const urlStr = req.url || '/';
-    const url = new URL(urlStr, 'http://localhost');
-    const deploymentId = url.searchParams.get('deploymentId');
-    
-    let key: number | 'global' = 'global';
-    if (deploymentId && deploymentId !== 'all') {
-      key = parseInt(deploymentId, 10);
-      if (isNaN(key)) {
-        key = 'global';
-      }
-    }
+export function handleWSClose(ws: ServerWebSocket<WSData>): void {
+  const { key } = ws.data;
+  wsConnections.get(key)?.delete(ws);
+  if (wsConnections.get(key)?.size === 0) {
+    wsConnections.delete(key);
+  }
+}
 
-    if (!wsConnections.has(key)) {
-      wsConnections.set(key, new Set());
-    }
-    wsConnections.get(key)!.add(ws);
-
-    console.log(`WebSocket connected: deploymentId=${key}, total=${wsConnections.get(key)!.size}`);
-
-    ws.on('close', () => {
-      wsConnections.get(key)?.delete(ws);
-      if (wsConnections.get(key)?.size === 0) {
-        wsConnections.delete(key);
-      }
-    });
-
-    ws.on('error', (error) => {
-      console.error('WebSocket error:', error);
-      wsConnections.get(key)?.delete(ws);
-    });
-  });
+export function handleWSError(ws: ServerWebSocket<WSData>, error: Error): void {
+  console.error('WebSocket error:', error);
+  handleWSClose(ws);
 }
 
 export async function log(

@@ -7,7 +7,8 @@ import { runMigrations } from './db/migrate.js';
 import { checkLocaltonetInstalled, installLocaltonet } from './daemon/localtonet.js';
 import { checkDockerRunning } from './daemon/deployer.js';
 import { startScheduler, stopScheduler } from './daemon/scheduler.js';
-import { initWebSocketServer } from './logger/index.js';
+import { handleWSOpen, handleWSClose, handleWSError } from './logger/index.js';
+import type { WSData } from './logger/index.js';
 import { getSession } from './github/oauth.js';
 import { logSystem, logError } from './logger/index.js';
 import * as authApi from './api/auth.js';
@@ -393,11 +394,25 @@ process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
 // Start the server
-const server = serve({
+const server = serve<WSData>({
   port: PORT,
-  async fetch(req) {
+  async fetch(req, server) {
+    const url = new URL(req.url);
+
+    // Handle WebSocket upgrade for /ws/logs
+    if (url.pathname === '/ws/logs') {
+      const deploymentId = url.searchParams.get('deploymentId');
+      let key: number | 'global' = 'global';
+      if (deploymentId && deploymentId !== 'all') {
+        const parsed = parseInt(deploymentId, 10);
+        if (!isNaN(parsed)) key = parsed;
+      }
+      server.upgrade(req, { data: { key } });
+      return;
+    }
+
     const response = await handleRequest(req);
-    
+
     // Add CORS headers
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
@@ -417,10 +432,13 @@ const server = serve({
       headers: newHeaders,
     });
   },
+  websocket: {
+    open: handleWSOpen,
+    close: handleWSClose,
+    error: handleWSError,
+    message(_ws, _message) {},
+  },
 });
-
-// Initialize WebSocket server
-initWebSocketServer(server);
 
 // Run startup and then start accepting requests
 startup().catch((error) => {
