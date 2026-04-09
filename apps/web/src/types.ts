@@ -45,6 +45,17 @@ export interface Deployment {
   repo_name?: string;
   repo_full_name?: string;
   triggered_by_login?: string | null;
+  localtonet_tunnel_id?: string | null;
+}
+
+export interface ActiveTunnel {
+  id: number;
+  tunnel_id: string;
+  deployment_id: number;
+  repo_name: string;
+  tunnel_url: string;
+  tunnel_port: number;
+  started_at: string;
 }
 
 export interface Log {

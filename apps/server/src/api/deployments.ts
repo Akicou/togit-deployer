@@ -117,3 +117,71 @@ export async function listRecentDeployments(req: Request): Promise<Response> {
 
   return Response.json({ deployments: result.rows });
 }
+
+export async function listActiveTunnels(req: Request, user: User): Promise<Response> {
+  if (user.role !== 'admin') {
+    return Response.json({ error: 'Only admins can list tunnels' }, { status: 403 });
+  }
+
+  const { getActiveTunnels } = await import('../daemon/localtonet.js');
+  const tunnels = await getActiveTunnels();
+
+  return Response.json({ tunnels });
+}
+
+export async function stopTunnel(req: Request, user: User, deploymentId: number): Promise<Response> {
+  if (user.role !== 'admin') {
+    return Response.json({ error: 'Only admins can stop tunnels' }, { status: 403 });
+  }
+
+  const deployment = await query<Deployment & { localtonet_tunnel_id: string | null }>(
+    'SELECT * FROM deployments WHERE id = $1',
+    [deploymentId]
+  );
+
+  if (deployment.rows.length === 0) {
+    return Response.json({ error: 'Deployment not found' }, { status: 404 });
+  }
+
+  const d = deployment.rows[0];
+
+  if (!d.localtonet_tunnel_id) {
+    return Response.json({ error: 'No tunnel found for this deployment' }, { status: 404 });
+  }
+
+  const authToken = process.env.LOCALTONET_AUTH_TOKEN || '';
+  if (!authToken) {
+    return Response.json({ error: 'LOCALTONET_AUTH_TOKEN not configured' }, { status: 500 });
+  }
+
+  try {
+    const { stopTunnel } = await import('../daemon/localtonet.js');
+    await stopTunnel(d.localtonet_tunnel_id, authToken);
+
+    // Update deployment status
+    await query(
+      `UPDATE deployments 
+       SET status = 'rolled_back', 
+           finished_at = NOW()
+       WHERE id = $1`,
+      [deploymentId]
+    );
+
+    return Response.json({ success: true, message: 'Tunnel stopped successfully' });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return Response.json({ error: `Failed to stop tunnel: ${errorMessage}` }, { status: 500 });
+  }
+}
+
+export async function testLocaltonetConnection(req: Request, user: User): Promise<Response> {
+  if (user.role !== 'admin') {
+    return Response.json({ error: 'Only admins can test connection' }, { status: 403 });
+  }
+
+  const authToken = process.env.LOCALTONET_AUTH_TOKEN || '';
+  const { testLocaltonetConnection } = await import('../daemon/localtonet.js');
+  const result = await testLocaltonetConnection(authToken);
+
+  return Response.json(result);
+}

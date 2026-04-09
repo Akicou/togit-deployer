@@ -6,6 +6,7 @@ import Repositories from './pages/Repositories';
 import DeploymentDetail from './pages/DeploymentDetail';
 import Logs from './pages/Logs';
 import Settings from './pages/Settings';
+import Tunnels from './pages/Tunnels';
 import Sidebar from './components/Sidebar';
 import { api } from './lib/api';
 import type { User } from './types';
@@ -81,6 +82,7 @@ export default function App() {
             <Route path="/repositories/:id" element={<Repositories user={user} />} />
             <Route path="/deployments/:id" element={<DeploymentDetail user={user} />} />
             <Route path="/logs" element={<Logs />} />
+            <Route path="/tunnels" element={<Tunnels />} />
             <Route path="/settings" element={<Settings user={user} />} />
           </Routes>
         </main>

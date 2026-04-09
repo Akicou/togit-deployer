@@ -329,9 +329,14 @@ export default function Settings({ user }: SettingsProps) {
                 padding: 12, border: '2px solid #1a1a1a', background: '#f5f5f5',
               }}>
                 <span style={{ color: '#666', fontWeight: 700 }}>Localtonet Token</span>
-                <span style={{ color: systemConfig?.localtonet ? '#1a1a1a' : '#cc0000', fontWeight: 700 }}>
-                  {systemConfig?.localtonet ? '✅ Configured' : '❌ Not Configured'}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ color: systemConfig?.localtonet ? '#1a1a1a' : '#cc0000', fontWeight: 700 }}>
+                    {systemConfig?.localtonet ? '✅ Configured' : '❌ Not Configured'}
+                  </span>
+                  {systemConfig?.localtonet && (
+                    <TestConnectionButton />
+                  )}
+                </div>
               </div>
               <div style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -592,6 +597,54 @@ export default function Settings({ user }: SettingsProps) {
             </div>
           )}
         </motion.div>
+      )}
+    </div>
+  );
+}
+
+function TestConnectionButton() {
+  const [testing, setTesting] = useState(false);
+  const [result, setResult] = useState<{ success: boolean; error?: string } | null>(null);
+
+  async function handleTest() {
+    setTesting(true);
+    setResult(null);
+    try {
+      const response = await api.post('/api/tunnels/test');
+      const data = await response.json();
+      setResult(data);
+    } catch (error) {
+      setResult({ success: false, error: 'Network error' });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  const buttonStyle: React.CSSProperties = {
+    padding: '4px 10px',
+    border: '2px solid #1a1a1a',
+    background: testing ? '#f5f5f5' : '#1a1a1a',
+    color: testing ? '#666' : '#ffffff',
+    fontSize: 9,
+    fontWeight: 800,
+    cursor: testing ? 'not-allowed' : 'pointer',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <button onClick={handleTest} disabled={testing} style={buttonStyle}>
+        {testing ? 'Testing...' : 'Test Connection'}
+      </button>
+      {result && (
+        <span style={{
+          fontSize: 9,
+          fontWeight: 700,
+          color: result.success ? '#00aa00' : '#cc0000',
+        }}>
+          {result.success ? '✅ Success' : `❌ ${result.error}`}
+        </span>
       )}
     </div>
   );

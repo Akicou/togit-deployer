@@ -213,6 +213,23 @@ async function handleRequest(req: Request): Promise<Response> {
       return deploymentsApi.listRecentDeployments(req as any);
     }
 
+    // Tunnel management routes
+    if (path === '/api/tunnels' && req.method === 'GET') {
+      return deploymentsApi.listActiveTunnels(req as any);
+    }
+
+    if (path.match(/^\/api\/tunnels\/(\d+)\/stop$/) && req.method === 'POST') {
+      const match = path.match(/^\/api\/tunnels\/(\d+)\/stop$/);
+      if (match) {
+        const deploymentId = parseInt(match[1], 10);
+        return deploymentsApi.stopTunnel(req as any, user, deploymentId);
+      }
+    }
+
+    if (path === '/api/tunnels/test' && req.method === 'POST') {
+      return deploymentsApi.testLocaltonetConnection(req as any);
+    }
+
     // Log routes
     if (path === '/api/logs' && req.method === 'GET') {
       return logsApi.getGlobalLogs(req as any);

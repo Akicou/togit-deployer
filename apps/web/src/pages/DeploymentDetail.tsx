@@ -15,6 +15,7 @@ export default function DeploymentDetail({ user }: { user: any }) {
   const [logs, setLogs] = useState<Log[]>([]);
   const [logsLoading, setLogsLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [stoppingTunnel, setStoppingTunnel] = useState(false);
 
   const { logs: liveLogs, connected } = useWebSocket(parseInt(id || '0', 10));
 
@@ -57,6 +58,25 @@ export default function DeploymentDetail({ user }: { user: any }) {
       console.error('Failed to delete deployment:', error);
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleStopTunnel() {
+    if (!deployment?.localtonet_tunnel_id || !confirm('Stop this tunnel? This will mark the deployment as rolled back.')) return;
+    setStoppingTunnel(true);
+    try {
+      const response = await api.post(`/api/tunnels/${id}/stop`);
+      if (response.ok) {
+        loadDeployment();
+      } else {
+        const data = await response.json();
+        alert(`Failed to stop tunnel: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Failed to stop tunnel:', error);
+      alert('Failed to stop tunnel');
+    } finally {
+      setStoppingTunnel(false);
     }
   }
 
@@ -212,7 +232,7 @@ export default function DeploymentDetail({ user }: { user: any }) {
 
           {deployment.tunnel_url && (
             <div>
-              <div style={{ color: '#666', fontSize: 11, marginBottom: 6, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Tunnel URL</div>
+              <div style={{ color: '#666', fontSize: 11, marginBottom: 6, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Tunnel</div>
               <a
                 href={deployment.tunnel_url}
                 target="_blank"
@@ -221,10 +241,41 @@ export default function DeploymentDetail({ user }: { user: any }) {
                   color: '#1a1a1a',
                   textDecoration: 'underline',
                   fontWeight: 700,
+                  display: 'block',
+                  marginBottom: 8,
                 }}
               >
                 {deployment.tunnel_url} ↗
               </a>
+              {deployment.tunnel_port && (
+                <div style={{ fontSize: 11, color: '#666', fontWeight: 600, marginBottom: 4 }}>
+                  Local port: <span style={{ fontFamily: 'monospace', color: '#1a1a1a' }}>{deployment.tunnel_port}</span>
+                </div>
+              )}
+              {deployment.localtonet_tunnel_id && (
+                <div style={{ fontSize: 11, color: '#666', fontWeight: 600, marginBottom: 8 }}>
+                  Tunnel ID: <span style={{ fontFamily: 'monospace', color: '#1a1a1a' }}>{deployment.localtonet_tunnel_id}</span>
+                </div>
+              )}
+              {(user.role === 'admin' || user.role === 'deployer') && (
+                <button
+                  onClick={handleStopTunnel}
+                  disabled={stoppingTunnel}
+                  style={{
+                    padding: '6px 12px',
+                    border: '2px solid #cc0000',
+                    background: stoppingTunnel ? '#f5f5f5' : '#cc0000',
+                    color: stoppingTunnel ? '#666' : '#ffffff',
+                    fontWeight: 800,
+                    cursor: stoppingTunnel ? 'not-allowed' : 'pointer',
+                    fontSize: 10,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                  }}
+                >
+                  {stoppingTunnel ? 'Stopping...' : 'Stop Tunnel'}
+                </button>
+              )}
             </div>
           )}
 

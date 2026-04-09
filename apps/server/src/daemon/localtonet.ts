@@ -99,6 +99,72 @@ export async function stopAllTunnels(): Promise<void> {
   }
 }
 
-export function getActiveTunnels(): string[] {
-  return [];
+export async function getActiveTunnels(): Promise<Array<{
+  id: number;
+  tunnel_id: string;
+  deployment_id: number;
+  repo_name: string;
+  tunnel_url: string;
+  tunnel_port: number;
+  started_at: Date;
+}>> {
+  try {
+    const result = await query<{
+      id: number;
+      localtonet_tunnel_id: string;
+      tunnel_url: string;
+      tunnel_port: number;
+      started_at: Date;
+      repo_full_name: string;
+    }>(`
+      SELECT 
+        d.id,
+        d.localtonet_tunnel_id,
+        d.tunnel_url,
+        d.tunnel_port,
+        d.started_at,
+        r.full_name as repo_full_name
+      FROM deployments d
+      JOIN repositories r ON r.id = d.repo_id
+      WHERE d.status = 'running' 
+        AND d.localtonet_tunnel_id IS NOT NULL
+        AND d.tunnel_url IS NOT NULL
+      ORDER BY d.started_at DESC
+    `);
+
+    return result.rows.map(row => ({
+      id: row.id,
+      tunnel_id: row.localtonet_tunnel_id,
+      deployment_id: row.id,
+      repo_name: row.repo_full_name,
+      tunnel_url: row.tunnel_url,
+      tunnel_port: row.tunnel_port,
+      started_at: row.started_at,
+    }));
+  } catch (error) {
+    logError(`Error fetching active tunnels: ${error instanceof Error ? error.message : String(error)}`);
+    return [];
+  }
+}
+
+export async function testLocaltonetConnection(authToken: string): Promise<{ success: boolean; error?: string }> {
+  if (!authToken) {
+    return { success: false, error: 'No auth token provided' };
+  }
+
+  try {
+    const response = await fetch(`${LOCALTONET_API}/tunnels`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+
+    if (response.ok) {
+      return { success: true };
+    }
+
+    const body = await response.text();
+    return { success: false, error: `API error ${response.status}: ${body}` };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
 }
