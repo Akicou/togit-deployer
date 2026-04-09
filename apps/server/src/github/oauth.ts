@@ -89,6 +89,7 @@ const ADMIN_GITHUB_LOGIN = process.env.ADMIN_GITHUB_LOGIN || '';
 
 export async function upsertUser(githubUser: GitHubUser, accessToken: string): Promise<User> {
   const encryptedToken = encrypt(accessToken);
+  const isAdminUser = ADMIN_GITHUB_LOGIN && githubUser.login.toLowerCase() === ADMIN_GITHUB_LOGIN.toLowerCase();
 
   // Check if user exists
   const existing = await query<User>(
@@ -97,14 +98,17 @@ export async function upsertUser(githubUser: GitHubUser, accessToken: string): P
   );
 
   if (existing.rows.length > 0) {
-    // Update existing user
+    // Update existing user - promote to admin if they match ADMIN_GITHUB_LOGIN
     const result = await query<User>(
       `UPDATE users 
-       SET github_login = $2, github_access_token = $3
+       SET github_login = $2, github_access_token = $3, role = $4, access_level = $5
        WHERE github_id = $1
        RETURNING *`,
-      [githubUser.id, githubUser.login, encryptedToken]
+      [githubUser.id, githubUser.login, encryptedToken, isAdminUser ? 'admin' : existing.rows[0].role, isAdminUser ? 'approved' : existing.rows[0].access_level]
     );
+    if (isAdminUser) {
+      console.log(`User ${githubUser.login} promoted to admin with approved access`);
+    }
     return result.rows[0];
   }
 
