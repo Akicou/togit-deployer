@@ -78,48 +78,41 @@ export default function Dashboard({ user }: DashboardProps) {
         gap: 16,
         marginBottom: 40,
       }}>
-        {statCards.map((stat, index) => {
-          const Card = ({ children }: { children: React.ReactNode }) => (
-            <motion.div
-              key={stat.label}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.1 }}
-              style={{
-                background: '#ffffff',
-                border: '3px solid #1a1a1a',
-                padding: 24,
-                boxShadow: '4px 4px 0 #1a1a1a',
-                ...(stat.link ? { cursor: 'pointer' } : {}),
-              }}
-              {...(stat.link ? { onClick: () => window.location.href = stat.link } : {})}
-            >
-              {children}
-            </motion.div>
-          );
-          return (
-            <Card>
-              <div style={{
-                fontSize: 11,
-                color: '#666',
-                marginBottom: 8,
-                fontWeight: 800,
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-              }}>
-                {stat.label}
-              </div>
-              <div style={{
-                fontSize: 40,
-                fontWeight: 800,
-                color: '#1a1a1a',
-                lineHeight: 1,
-              }}>
-                {stat.value}
-              </div>
-            </Card>
-          );
-        }))}
+        {statCards.map((stat, index) => (
+          <motion.div
+            key={stat.label}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: index * 0.1 }}
+            onClick={() => stat.link && (window.location.href = stat.link)}
+            style={{
+              background: '#ffffff',
+              border: '3px solid #1a1a1a',
+              padding: 24,
+              boxShadow: '4px 4px 0 #1a1a1a',
+              cursor: stat.link ? 'pointer' : 'default',
+            }}
+          >
+            <div style={{
+              fontSize: 11,
+              color: '#666',
+              marginBottom: 8,
+              fontWeight: 800,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}>
+              {stat.label}
+            </div>
+            <div style={{
+              fontSize: 40,
+              fontWeight: 800,
+              color: '#1a1a1a',
+              lineHeight: 1,
+            }}>
+              {stat.value}
+            </div>
+          </motion.div>
+        ))}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24 }}>
