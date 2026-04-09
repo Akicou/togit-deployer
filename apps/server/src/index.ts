@@ -230,6 +230,14 @@ async function handleRequest(req: Request): Promise<Response> {
       return deploymentsApi.testLocaltonetConnection(req as any);
     }
 
+    if (path.match(/^\/api\/tunnels\/(\d+)\/status$/) && req.method === 'GET') {
+      const match = path.match(/^\/api\/tunnels\/(\d+)\/status$/);
+      if (match) {
+        const tunnelId = match[1];
+        return deploymentsApi.getTunnelStatus(req as any, user, tunnelId);
+      }
+    }
+
     // Log routes
     if (path === '/api/logs' && req.method === 'GET') {
       return logsApi.getGlobalLogs(req as any);

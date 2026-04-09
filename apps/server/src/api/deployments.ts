@@ -185,3 +185,15 @@ export async function testLocaltonetConnection(req: Request, user: User): Promis
 
   return Response.json(result);
 }
+
+export async function getTunnelStatus(req: Request, user: User, tunnelId: string): Promise<Response> {
+  if (user.role !== 'admin') {
+    return Response.json({ error: 'Only admins can check tunnel status' }, { status: 403 });
+  }
+
+  const authToken = process.env.LOCALTONET_AUTH_TOKEN || '';
+  const { getTunnelStatus } = await import('../daemon/localtonet.js');
+  const result = await getTunnelStatus(tunnelId, authToken);
+
+  return Response.json(result);
+}

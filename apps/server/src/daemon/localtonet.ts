@@ -30,6 +30,8 @@ export async function startTunnel(
 
   logNetwork(`Creating Localtonet tunnel for port ${localPort}`, { deployment_id: deploymentId });
 
+  // API: POST /tunnels/http/random-subdomain
+  // Body: { port: number, protocolType: 1 } (authToken in header only)
   const response = await fetch(`${LOCALTONET_API}/tunnels/http/random-subdomain`, {
     method: 'POST',
     headers: {
@@ -38,8 +40,8 @@ export async function startTunnel(
     },
     body: JSON.stringify({
       port: localPort,
-      authToken,
-      protocolType: 1,
+      protocolType: 1, // 1 = HTTP
+      name: `togit-deployment-${deploymentId}`, // Optional descriptive name
     }),
   });
 
@@ -147,24 +149,84 @@ export async function getActiveTunnels(): Promise<Array<{
   }
 }
 
-export async function testLocaltonetConnection(authToken: string): Promise<{ success: boolean; error?: string }> {
+export async function getTunnelStatus(tunnelId: string, authToken: string): Promise<{
+  exists: boolean;
+  isActive: boolean;
+  url?: string;
+  error?: string;
+}> {
+  if (!authToken) {
+    return { exists: false, isActive: false, error: 'No auth token' };
+  }
+
+  try {
+    // API: GET /tunnels/{tunnelId}
+    const response = await fetch(`${LOCALTONET_API}/tunnels/${tunnelId}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+
+    if (response.status === 404) {
+      return { exists: false, isActive: false };
+    }
+
+    if (!response.ok) {
+      const body = await response.text();
+      return { exists: true, isActive: false, error: `API error ${response.status}: ${body}` };
+    }
+
+    const tunnel = await response.json() as LocaltonetTunnel & { url?: string };
+    
+    return { 
+      exists: true,
+      isActive: tunnel.status === 1,
+      url: tunnel.url
+    };
+  } catch (error) {
+    return { 
+      exists: false, 
+      isActive: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+export async function testLocaltonetConnection(authToken: string): Promise<{
+  success: boolean;
+  error?: string;
+  activeTunnelsCount?: number;
+}> {
   if (!authToken) {
     return { success: false, error: 'No auth token provided' };
   }
 
   try {
+    // API: GET /tunnels - returns list of all tunnels (active and inactive)
     const response = await fetch(`${LOCALTONET_API}/tunnels`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${authToken}` },
     });
 
-    if (response.ok) {
-      return { success: true };
+    if (!response.ok) {
+      const body = await response.text();
+      return { success: false, error: `API error ${response.status}: ${body}` };
     }
 
-    const body = await response.text();
-    return { success: false, error: `API error ${response.status}: ${body}` };
+    const data = await response.json() as any[];
+    
+    // Count active tunnels (status === 1 means active)
+    const activeCount = data.filter((t: any) => t.status === 1).length;
+    
+    return { 
+      success: true,
+      activeTunnelsCount: activeCount,
+      error: undefined
+    };
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : String(error),
+      activeTunnelsCount: 0
+    };
   }
 }

@@ -604,7 +604,11 @@ export default function Settings({ user }: SettingsProps) {
 
 function TestConnectionButton() {
   const [testing, setTesting] = useState(false);
-  const [result, setResult] = useState<{ success: boolean; error?: string } | null>(null);
+  const [result, setResult] = useState<{
+    success: boolean;
+    error?: string;
+    activeTunnelsCount?: number;
+  } | null>(null);
 
   async function handleTest() {
     setTesting(true);
@@ -638,13 +642,24 @@ function TestConnectionButton() {
         {testing ? 'Testing...' : 'Test Connection'}
       </button>
       {result && (
-        <span style={{
-          fontSize: 9,
-          fontWeight: 700,
-          color: result.success ? '#00aa00' : '#cc0000',
-        }}>
-          {result.success ? '✅ Success' : `❌ ${result.error}`}
-        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={{
+            fontSize: 9,
+            fontWeight: 700,
+            color: result.success ? '#00aa00' : '#cc0000',
+          }}>
+            {result.success ? '✅ API Connected' : `❌ ${result.error}`}
+          </span>
+          {result.success && result.activeTunnelsCount !== undefined && (
+            <span style={{
+              fontSize: 8,
+              fontWeight: 600,
+              color: '#666',
+            }}>
+              📊 {result.activeTunnelsCount} active tunnel{result.activeTunnelsCount !== 1 ? 's' : ''} on Localtonet
+            </span>
+          )}
+        </div>
       )}
     </div>
   );

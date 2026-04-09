@@ -58,6 +58,13 @@ export interface ActiveTunnel {
   started_at: string;
 }
 
+export interface TunnelStatus {
+  exists: boolean;
+  isActive: boolean;
+  url?: string;
+  error?: string;
+}
+
 export interface Log {
   id: number;
   deployment_id: number | null;
