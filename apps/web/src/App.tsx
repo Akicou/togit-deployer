@@ -8,6 +8,7 @@ import Logs from './pages/Logs';
 import Settings from './pages/Settings';
 import Tunnels from './pages/Tunnels';
 import Sidebar from './components/Sidebar';
+import { ToastProvider } from './components/Toast';
 import { api } from './lib/api';
 import type { User } from './types';
 
@@ -66,28 +67,30 @@ export default function App() {
   }
 
   return (
-    <BrowserRouter>
-      <div style={{ display: 'flex', minHeight: '100vh' }}>
-        <Sidebar user={user} onLogout={checkAuth} />
-        <main style={{
-          flex: 1,
-          marginLeft: 260,
-          padding: '32px',
-          background: '#ffffff',
-        }}>
-          <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<Dashboard user={user} />} />
-            <Route path="/repositories" element={<Repositories user={user} />} />
-            <Route path="/repositories/:id" element={<Repositories user={user} />} />
-            <Route path="/deployments/:id" element={<DeploymentDetail user={user} />} />
-            <Route path="/logs" element={<Logs />} />
-            <Route path="/tunnels" element={<Tunnels />} />
-            <Route path="/settings" element={<Settings user={user} />} />
-          </Routes>
-        </main>
-      </div>
-    </BrowserRouter>
+    <ToastProvider>
+      <BrowserRouter>
+        <div style={{ display: 'flex', minHeight: '100vh' }}>
+          <Sidebar user={user} onLogout={checkAuth} />
+          <main style={{
+            flex: 1,
+            marginLeft: 260,
+            padding: '32px',
+            background: '#ffffff',
+          }}>
+            <Routes>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<Dashboard user={user} />} />
+              <Route path="/repositories" element={<Repositories user={user} />} />
+              <Route path="/repositories/:id" element={<Repositories user={user} />} />
+              <Route path="/deployments/:id" element={<DeploymentDetail user={user} />} />
+              <Route path="/logs" element={<Logs />} />
+              <Route path="/tunnels" element={<Tunnels />} />
+              <Route path="/settings" element={<Settings user={user} />} />
+            </Routes>
+          </main>
+        </div>
+      </BrowserRouter>
+    </ToastProvider>
   );
 }
 

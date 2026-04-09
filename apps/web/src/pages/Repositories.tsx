@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../lib/api';
 import RepoCard from '../components/RepoCard';
 import DeployBadge from '../components/DeployBadge';
 import { useDeployments } from '../hooks/useDeployments';
+import { useToast } from '../components/Toast';
 import type { User, Repository } from '../types';
 
 interface RepositoriesProps {
@@ -21,6 +22,7 @@ export default function Repositories({ user }: RepositoriesProps) {
   const [envVars, setEnvVars] = useState<Record<string, string>>({});
   const [envExample, setEnvExample] = useState<Record<string, string> | null>(null);
   const [loadingEnv, setLoadingEnv] = useState(false);
+  const toast = useToast();
 
   const canManage = user.role === 'admin' || user.role === 'deployer';
 
@@ -73,11 +75,15 @@ export default function Repositories({ user }: RepositoriesProps) {
         env_vars: envVars,
       });
       if (response.ok) {
+        toast('Deployment started', 'success');
         await loadRepos();
         setShowDeployModal(null);
+      } else {
+        const data = await response.json().catch(() => ({}));
+        toast(data.error || `Deploy failed (${response.status})`, 'error');
       }
     } catch (error) {
-      console.error('Deploy failed:', error);
+      toast('Deploy failed — network error', 'error');
     } finally {
       setDeployingRepo(null);
     }
@@ -233,6 +239,7 @@ export default function Repositories({ user }: RepositoriesProps) {
             setEnvVars={setEnvVars}
             envExample={envExample}
             loadingEnv={loadingEnv}
+            deploying={deployingRepo === showDeployModal.repoId}
           />
         )}
       </AnimatePresence>
@@ -242,6 +249,8 @@ export default function Repositories({ user }: RepositoriesProps) {
 
 function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; onRefresh: () => void }) {
   const { deployments, loading } = useDeployments(repo.id);
+  const navigate = useNavigate();
+  const toast = useToast();
   const [showDeployModal, setShowDeployModal] = useState<{ repoId: number; repoName: string } | null>(null);
   const [deployEnvVars, setDeployEnvVars] = useState<Record<string, string>>({});
   const [envExample, setEnvExample] = useState<Record<string, string> | null>(null);
@@ -257,18 +266,25 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
   const [newValue, setNewValue] = useState('');
   const [saving, setSaving] = useState(false);
   const [deploying, setDeploying] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   async function handleDeployConfirm() {
     if (!showDeployModal) return;
     setDeploying(true);
     try {
-      await api.post(`/api/repos/${showDeployModal.repoId}/deploy`, {
+      const response = await api.post(`/api/repos/${showDeployModal.repoId}/deploy`, {
         env_vars: deployEnvVars,
       });
-      setShowDeployModal(null);
-      onRefresh();
+      if (response.ok) {
+        toast('Deployment started', 'success');
+        setShowDeployModal(null);
+        onRefresh();
+      } else {
+        const data = await response.json().catch(() => ({}));
+        toast(data.error || `Deploy failed (${response.status})`, 'error');
+      }
     } catch (error) {
-      console.error('Deploy failed:', error);
+      toast('Deploy failed — network error', 'error');
     } finally {
       setDeploying(false);
     }
@@ -277,12 +293,38 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
   async function handleSave() {
     setSaving(true);
     try {
-      await api.patch(`/api/repos/${repo.id}`, { ...config, deployment_env_vars: envVars });
-      onRefresh();
+      const response = await api.patch(`/api/repos/${repo.id}`, { ...config, deployment_env_vars: envVars });
+      if (response.ok) {
+        toast('Changes saved', 'success');
+        onRefresh();
+      } else {
+        const data = await response.json().catch(() => ({}));
+        toast(data.error || 'Failed to save changes', 'error');
+      }
     } catch (error) {
-      console.error('Failed to save:', error);
+      toast('Failed to save — network error', 'error');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!window.confirm(`Delete ${repo.full_name}? This will remove all deployments and logs.`)) return;
+    setDeleting(true);
+    try {
+      const response = await api.delete(`/api/repos/${repo.id}`);
+      if (response.ok) {
+        toast(`${repo.full_name} deleted`, 'success');
+        onRefresh();
+        navigate('/repositories');
+      } else {
+        const data = await response.json().catch(() => ({}));
+        toast(data.error || 'Failed to delete repository', 'error');
+      }
+    } catch (error) {
+      toast('Failed to delete — network error', 'error');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -354,51 +396,75 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
             </div>
           </div>
 
-          {(user.role === 'admin' || user.role === 'deployer') && (() => {
-            const isDeploying = repo.last_deployment_status === 'pending' || repo.last_deployment_status === 'building';
-            return (
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            {user.role === 'admin' && (
               <button
-                onClick={async () => {
-                  if (!isDeploying) {
-                    setDeployEnvVars({});
-                    setEnvExample(null);
-                    setLoadingEnv(true);
-                    setShowDeployModal({ repoId: repo.id, repoName: repo.full_name });
-                    try {
-                      const response = await api.get(`/api/repos/${repo.id}/env-example`);
-                      if (response.ok) {
-                        const data = await response.json();
-                        if (data.env_example) {
-                          setEnvExample(data.env_example);
-                          setDeployEnvVars(data.env_example);
-                        }
-                      }
-                    } catch (error) {
-                      console.error('Failed to load env example:', error);
-                    } finally {
-                      setLoadingEnv(false);
-                    }
-                  }
-                }}
-                disabled={isDeploying}
+                onClick={handleDelete}
+                disabled={deleting}
                 style={{
-                  padding: '14px 24px',
+                  padding: '14px 20px',
                   border: '3px solid #1a1a1a',
-                  background: isDeploying ? '#f5f5f5' : '#1a1a1a',
-                  color: isDeploying ? '#666' : '#ffffff',
+                  background: '#ffffff',
+                  color: '#1a1a1a',
                   fontWeight: 800,
-                  cursor: isDeploying ? 'not-allowed' : 'pointer',
+                  cursor: deleting ? 'not-allowed' : 'pointer',
                   fontSize: 13,
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px',
-                  boxShadow: isDeploying ? '2px 2px 0 #1a1a1a' : '6px 6px 0 #1a1a1a',
+                  boxShadow: deleting ? '2px 2px 0 #1a1a1a' : '4px 4px 0 #1a1a1a',
                   transition: 'all 0.1s ease',
+                  opacity: deleting ? 0.6 : 1,
                 }}
               >
-                {isDeploying ? 'Deploying...' : 'Deploy Now'}
+                {deleting ? 'Deleting...' : 'Delete'}
               </button>
-            );
-          })()}
+            )}
+            {(user.role === 'admin' || user.role === 'deployer') && (() => {
+              const isDeploying = repo.last_deployment_status === 'pending' || repo.last_deployment_status === 'building';
+              return (
+                <button
+                  onClick={async () => {
+                    if (!isDeploying) {
+                      setDeployEnvVars({});
+                      setEnvExample(null);
+                      setLoadingEnv(true);
+                      setShowDeployModal({ repoId: repo.id, repoName: repo.full_name });
+                      try {
+                        const response = await api.get(`/api/repos/${repo.id}/env-example`);
+                        if (response.ok) {
+                          const data = await response.json();
+                          if (data.env_example) {
+                            setEnvExample(data.env_example);
+                            setDeployEnvVars(data.env_example);
+                          }
+                        }
+                      } catch (error) {
+                        console.error('Failed to load env example:', error);
+                      } finally {
+                        setLoadingEnv(false);
+                      }
+                    }
+                  }}
+                  disabled={isDeploying}
+                  style={{
+                    padding: '14px 24px',
+                    border: '3px solid #1a1a1a',
+                    background: isDeploying ? '#f5f5f5' : '#1a1a1a',
+                    color: isDeploying ? '#666' : '#ffffff',
+                    fontWeight: 800,
+                    cursor: isDeploying ? 'not-allowed' : 'pointer',
+                    fontSize: 13,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    boxShadow: isDeploying ? '2px 2px 0 #1a1a1a' : '6px 6px 0 #1a1a1a',
+                    transition: 'all 0.1s ease',
+                  }}
+                >
+                  {isDeploying ? 'Deploying...' : 'Deploy Now'}
+                </button>
+              );
+            })()}
+          </div>
         </div>
       </motion.div>
 
@@ -673,6 +739,7 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
           setEnvVars={setDeployEnvVars}
           envExample={envExample}
           loadingEnv={loadingEnv}
+          deploying={deploying}
         />
       )}
     </div>
@@ -987,15 +1054,16 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
   );
 }
 
-function DeployModal({ 
-  showDeployModal, 
-  onClose, 
-  onDeploy, 
-  envVars, 
-  setEnvVars, 
-  envExample, 
-  loadingEnv 
-}: { 
+function DeployModal({
+  showDeployModal,
+  onClose,
+  onDeploy,
+  envVars,
+  setEnvVars,
+  envExample,
+  loadingEnv,
+  deploying,
+}: {
   showDeployModal: { repoId: number; repoName: string } | null;
   onClose: () => void;
   onDeploy: () => void;
@@ -1003,6 +1071,7 @@ function DeployModal({
   setEnvVars: (vars: Record<string, string>) => void;
   envExample: Record<string, string> | null;
   loadingEnv: boolean;
+  deploying?: boolean;
 }) {
   const [newKey, setNewKey] = useState('');
   const [newValue, setNewValue] = useState('');
@@ -1215,21 +1284,23 @@ function DeployModal({
               </button>
               <button
                 onClick={onDeploy}
+                disabled={deploying}
                 style={{
                   flex: 1,
                   padding: '14px',
                   border: '3px solid #1a1a1a',
-                  background: '#1a1a1a',
-                  color: '#ffffff',
+                  background: deploying ? '#f5f5f5' : '#1a1a1a',
+                  color: deploying ? '#666' : '#ffffff',
                   fontWeight: 800,
-                  cursor: 'pointer',
+                  cursor: deploying ? 'not-allowed' : 'pointer',
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px',
                   fontSize: 13,
-                  boxShadow: '3px 3px 0 #1a1a1a',
+                  boxShadow: deploying ? '1px 1px 0 #1a1a1a' : '3px 3px 0 #1a1a1a',
+                  transition: 'all 0.1s ease',
                 }}
               >
-                Deploy
+                {deploying ? 'Deploying...' : 'Deploy'}
               </button>
             </div>
           </>
