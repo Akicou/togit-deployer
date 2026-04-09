@@ -115,7 +115,6 @@ export async function upsertUser(githubUser: GitHubUser, accessToken: string): P
   // Determine role and access level
   const countResult = await query<{ count: string }>('SELECT COUNT(*) FROM users');
   const isFirstUser = parseInt(countResult.rows[0].count, 10) === 0;
-  const isAdminUser = ADMIN_GITHUB_LOGIN && githubUser.login.toLowerCase() === ADMIN_GITHUB_LOGIN.toLowerCase();
   
   const role = isFirstUser || isAdminUser ? 'admin' : 'viewer';
   const accessLevel = isAdminUser ? 'approved' : 'pending';
