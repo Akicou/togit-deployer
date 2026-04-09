@@ -16,6 +16,7 @@ export interface Repository {
   private: boolean;
   root_path: string;
   deploy_mode: 'release' | 'commit';
+  watch_branch: string;
   enabled: boolean;
   added_by: number | null;
   created_at: string;

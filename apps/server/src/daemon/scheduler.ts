@@ -48,7 +48,7 @@ export async function checkForUpdates(repo: Repository): Promise<{ hasUpdate: bo
 
   if (repo.deploy_mode === 'release') {
     // Check for new releases
-    const latestRelease = await getLatestRelease(repo.owner, repo.name, accessToken);
+    const latestRelease = await getLatestRelease(repo.owner, repo.name, accessToken, repo.watch_branch);
     
     if (!latestRelease) {
       return { hasUpdate: false, ref: '', refType: 'release' };
@@ -71,7 +71,7 @@ export async function checkForUpdates(repo: Repository): Promise<{ hasUpdate: bo
 
   } else {
     // Check for new commits
-    const latestCommit = await getLatestCommit(repo.owner, repo.name, accessToken);
+    const latestCommit = await getLatestCommit(repo.owner, repo.name, accessToken, repo.watch_branch);
     
     if (!latestCommit) {
       return { hasUpdate: false, ref: '', refType: 'commit' };

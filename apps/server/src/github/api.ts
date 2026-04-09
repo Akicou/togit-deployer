@@ -8,6 +8,7 @@ interface GitHubRelease {
   html_url: string;
   zipball_url: string;
   tarball_url: string;
+  target_commitish: string;
 }
 
 interface GitHubCommit {
@@ -35,7 +36,8 @@ interface GitHubRepo {
 export async function getLatestRelease(
   owner: string,
   repo: string,
-  accessToken?: string
+  accessToken?: string,
+  branch?: string
 ): Promise<GitHubRelease | null> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github.v3+json',
@@ -47,19 +49,26 @@ export async function getLatestRelease(
   }
 
   try {
-    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases/latest`, {
+    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases?per_page=20`, {
       headers,
     });
 
     if (response.status === 404) {
-      return null; // No releases
+      return null;
     }
 
     if (!response.ok) {
       throw new Error(`GitHub API error: ${response.status}`);
     }
 
-    return (await response.json()) as GitHubRelease;
+    const releases = (await response.json()) as GitHubRelease[];
+    if (releases.length === 0) return null;
+
+    if (branch) {
+      return releases.find((r) => r.target_commitish === branch) ?? null;
+    }
+
+    return releases[0];
   } catch (error) {
     console.error('Failed to fetch latest release:', error);
     throw error;
@@ -69,7 +78,8 @@ export async function getLatestRelease(
 export async function getLatestCommit(
   owner: string,
   repo: string,
-  accessToken?: string
+  accessToken?: string,
+  branch?: string
 ): Promise<GitHubCommit | null> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github.v3+json',
@@ -80,8 +90,10 @@ export async function getLatestCommit(
     headers.Authorization = `Bearer ${accessToken}`;
   }
 
+  const branchParam = branch ? `&sha=${encodeURIComponent(branch)}` : '';
+
   try {
-    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits?per_page=1`, {
+    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits?per_page=1${branchParam}`, {
       headers,
     });
 

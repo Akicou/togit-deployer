@@ -10,11 +10,13 @@ const addRepoSchema = z.object({
   name: z.string().min(1),
   root_path: z.string().default('/'),
   deploy_mode: z.enum(['release', 'commit']).default('release'),
+  watch_branch: z.string().default('main'),
 });
 
 const updateRepoSchema = z.object({
   root_path: z.string().optional(),
   deploy_mode: z.enum(['release', 'commit']).optional(),
+  watch_branch: z.string().optional(),
   enabled: z.boolean().optional(),
 });
 
@@ -81,17 +83,17 @@ export async function addRepo(req: Request, user: User): Promise<Response> {
     return Response.json({ error: parsed.error.message }, { status: 400 });
   }
 
-  const { owner, name, root_path, deploy_mode } = parsed.data;
+  const { owner, name, root_path, deploy_mode, watch_branch } = parsed.data;
   const full_name = `${owner}/${name}`;
 
   try {
     const result = await query<Repository>(
-      `INSERT INTO repositories (owner, name, full_name, root_path, deploy_mode, added_by)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO repositories (owner, name, full_name, root_path, deploy_mode, watch_branch, added_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (full_name) DO UPDATE
-       SET root_path = $4, deploy_mode = $5
+       SET root_path = $4, deploy_mode = $5, watch_branch = $6
        RETURNING *`,
-      [owner, name, `${owner}/${name}`, root_path, deploy_mode, user.id]
+      [owner, name, full_name, root_path, deploy_mode, watch_branch, user.id]
     );
 
     return Response.json({ repo: result.rows[0] }, { status: 201 });
@@ -129,6 +131,10 @@ export async function updateRepo(req: Request, user: User, repoId: number): Prom
   if (parsed.data.deploy_mode !== undefined) {
     updates.push(`deploy_mode = $${paramIndex++}`);
     values.push(parsed.data.deploy_mode);
+  }
+  if (parsed.data.watch_branch !== undefined) {
+    updates.push(`watch_branch = $${paramIndex++}`);
+    values.push(parsed.data.watch_branch);
   }
   if (parsed.data.enabled !== undefined) {
     updates.push(`enabled = $${paramIndex++}`);
@@ -217,7 +223,7 @@ export async function triggerDeploy(req: Request, user: User, repoId: number): P
 
   if (repo.deploy_mode === 'release') {
     const { getLatestRelease } = await import('../github/api.js');
-    const release = await getLatestRelease(repo.owner, repo.name);
+    const release = await getLatestRelease(repo.owner, repo.name, undefined, repo.watch_branch);
     if (!release) {
       return Response.json({ error: 'No releases found' }, { status: 404 });
     }
@@ -225,7 +231,7 @@ export async function triggerDeploy(req: Request, user: User, repoId: number): P
     refType = 'release';
   } else {
     const { getLatestCommit } = await import('../github/api.js');
-    const commit = await getLatestCommit(repo.owner, repo.name);
+    const commit = await getLatestCommit(repo.owner, repo.name, undefined, repo.watch_branch);
     if (!commit) {
       return Response.json({ error: 'No commits found' }, { status: 404 });
     }

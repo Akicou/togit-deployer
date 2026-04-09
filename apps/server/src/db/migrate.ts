@@ -83,6 +83,9 @@ const migrations = [
   `CREATE INDEX IF NOT EXISTS idx_logs_repo_id ON logs(repo_id)`,
   `CREATE INDEX IF NOT EXISTS idx_logs_category ON logs(category)`,
   `CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)`,
+
+  // Add watch_branch to existing repositories
+  `ALTER TABLE repositories ADD COLUMN IF NOT EXISTS watch_branch TEXT NOT NULL DEFAULT 'main'`,
 ];
 
 export async function runMigrations(): Promise<void> {

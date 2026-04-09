@@ -190,6 +190,7 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
   const [config, setConfig] = useState({
     root_path: repo.root_path,
     deploy_mode: repo.deploy_mode,
+    watch_branch: repo.watch_branch ?? 'main',
     enabled: repo.enabled,
   });
   const [saving, setSaving] = useState(false);
@@ -349,6 +350,27 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
             </select>
           </div>
 
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', color: '#8b949e', fontSize: 13, marginBottom: 6 }}>
+              Watch Branch
+            </label>
+            <input
+              type="text"
+              value={config.watch_branch}
+              onChange={(e) => setConfig({ ...config, watch_branch: e.target.value })}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                borderRadius: 6,
+                border: '1px solid #30363d',
+                background: '#0d1117',
+                color: '#f0f6fc',
+                fontSize: 14,
+              }}
+              placeholder="main"
+            />
+          </div>
+
           <div style={{ marginBottom: 20 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
               <input
@@ -447,6 +469,7 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
   const [config, setConfig] = useState({
     root_path: '/',
     deploy_mode: 'release' as 'release' | 'commit',
+    watch_branch: 'main',
   });
   const [adding, setAdding] = useState(false);
 
@@ -642,7 +665,7 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
               />
             </div>
 
-            <div style={{ marginBottom: 20 }}>
+            <div style={{ marginBottom: 16 }}>
               <label style={{ display: 'block', color: '#8b949e', fontSize: 13, marginBottom: 6 }}>
                 Deploy Mode
               </label>
@@ -662,6 +685,27 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
                 <option value="release">Release (deploy on new tags)</option>
                 <option value="commit">Commit (deploy on new commits)</option>
               </select>
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: 'block', color: '#8b949e', fontSize: 13, marginBottom: 6 }}>
+                Watch Branch
+              </label>
+              <input
+                type="text"
+                value={config.watch_branch}
+                onChange={(e) => setConfig({ ...config, watch_branch: e.target.value })}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: 6,
+                  border: '1px solid #30363d',
+                  background: '#0d1117',
+                  color: '#f0f6fc',
+                  fontSize: 14,
+                }}
+                placeholder="main"
+              />
             </div>
 
             <div style={{ display: 'flex', gap: 12 }}>
