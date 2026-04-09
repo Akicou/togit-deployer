@@ -1,36 +1,81 @@
 /**
  * Robust .env file parser — handles inline comments, quoted values,
- * empty lines, and full-line comments.
+ * CRLF line endings, UTF-8 BOM, empty lines, and full-line comments.
  */
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, statSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const fileDir = dirname(fileURLToPath(import.meta.url));
 
+/**
+ * Verbose flag: set VERBOSE_ENV=true for detailed logging
+ */
+const DEBUG = process.env.VERBOSE_ENV === 'true';
+
+function debugLog(msg: string): void {
+  if (DEBUG) console.log(`    [env-debug] ${msg}`);
+}
+
 export function loadEnv(filePath: string, overwrite = false): boolean {
   if (!existsSync(filePath)) {
-    console.log(`  env: skipping (not found) ${filePath}`);
+    debugLog(`File not found: ${filePath}`);
     return false;
   }
 
-  const content = readFileSync(filePath, 'utf-8');
+  const stat = statSync(filePath);
+  debugLog(`File exists: ${filePath} (${stat.size} bytes)`);
+
+  let content = readFileSync(filePath, 'utf-8');
+  debugLog(`Content length: ${content.length} chars`);
+
+  // Show first 100 chars of raw content
+  debugLog(`First 150 bytes (hex): ${Buffer.from(content.substring(0, 50)).toString('hex')}`);
+  debugLog(`First 150 chars: ${JSON.stringify(content.substring(0, 50))}`);
+
+  // Strip UTF-8 BOM if present
+  if (content.charCodeAt(0) === 0xFEFF) {
+    debugLog('Found UTF-8 BOM, stripping');
+    content = content.substring(1);
+  }
+
+  // Normalize CRLF to LF
+  const hadCRLF = content.includes('\r\n');
+  content = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  if (hadCRLF) debugLog('Found CRLF, normalizing to LF');
+
+  const lines = content.split('\n');
+  debugLog(`Total lines: ${lines.length}`);
+
   let loaded = 0;
-  for (const line of content.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    const line = rawLine.trim();
 
-    const eqIndex = trimmed.indexOf('=');
-    if (eqIndex === -1) continue;
+    debugLog(`Line ${i + 1}: ${JSON.stringify(line)} (raw: ${JSON.stringify(rawLine)})`);
 
-    let key = trimmed.substring(0, eqIndex).trim();
-    let value = trimmed.substring(eqIndex + 1).trim();
+    // Skip empty lines and full-line comments
+    if (!line || line.startsWith('#')) {
+      debugLog(`  → skipped (empty or comment)`);
+      continue;
+    }
 
+    const eqIndex = line.indexOf('=');
+    if (eqIndex === -1) {
+      debugLog(`  → skipped (no '=' found)`);
+      continue;
+    }
+
+    let key = line.substring(0, eqIndex).trim();
+    let value = line.substring(eqIndex + 1).trim();
+
+    // Remove inline comments
     if (!value.startsWith('"') && !value.startsWith("'")) {
       const ci = value.indexOf(' #');
       if (ci !== -1) value = value.substring(0, ci).trim();
     }
 
+    // Strip surrounding quotes
     if (
       (value.startsWith('"') && value.endsWith('"')) ||
       (value.startsWith("'") && value.endsWith("'"))
@@ -38,28 +83,46 @@ export function loadEnv(filePath: string, overwrite = false): boolean {
       value = value.slice(1, -1);
     }
 
-    if (overwrite || !process.env[key]) {
+    debugLog(`  → key="${key}" value="${value.substring(0, 10)}..."`);
+
+    const alreadyExists = process.env[key] !== undefined;
+    debugLog(`    alreadyExists=${alreadyExists}, overwrite=${overwrite}`);
+
+    if (!alreadyExists || overwrite) {
       process.env[key] = value;
       loaded++;
+      debugLog(`    ✓ loaded`);
+    } else {
+      debugLog(`    ✗ skipped (already set)`);
     }
   }
 
-  console.log(`  env: loaded ${loaded} vars from ${filePath}`);
+  debugLog(`Result: loaded ${loaded} out of ${lines.length} lines`);
+
+  if (loaded > 0) {
+    console.log(`  env: loaded ${loaded} vars from ${filePath}`);
+  }
+
   return loaded > 0;
 }
 
 export function loadEnvFiles(): void {
   console.log(`  env: process.cwd() = "${process.cwd()}"`);
-  console.log(`  env: __dirname equivalent = "${fileDir}"`);
+  console.log(`  env: __dirname = "${fileDir}"`);
 
-  // 1. process.cwd()/.env — when running `bun apps/server/src/index.ts` from repo root
+  // 1. process.cwd()/.env
   loadEnv(join(process.cwd(), '.env'));
 
-  // 2. Try resolving from the server source directory up to repo root
-  //    env.ts at: apps/server/src/utils/
-  //    repo root: 4 levels up
+  // 2. From source file to repo root (4 levels up)
   loadEnv(join(fileDir, '../../../../.env'));
 
-  // 3. Check apps/server/.env (if placed alongside server code)
+  // 3. apps/server/.env
   loadEnv(join(fileDir, '../../.env'));
+
+  // Summary
+  const relevantEnvVars = ['LOCALTONET_AUTH_TOKEN', 'GITHUB_APP_CLIENT_ID'];
+  console.log(`  env: summary — LOCALTONET_AUTH_TOKEN=${process.env.LOCALTONET_AUTH_TOKEN ? '(set)' : '(NOT set)'}, GITHUB_APP_CLIENT_ID=${process.env.GITHUB_APP_CLIENT_ID ? '(set)' : '(NOT set)'}`);
+  if (process.env.LOCALTONET_AUTH_TOKEN) {
+    console.log(`  env: LOCALTONET_AUTH_TOKEN value length = ${process.env.LOCALTONET_AUTH_TOKEN.length}`);
+  }
 }
