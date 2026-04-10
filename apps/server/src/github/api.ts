@@ -166,6 +166,27 @@ export async function getLatestCommit(
 }
 
 /**
+ * Search public GitHub repositories using GitHub's search API.
+ */
+export async function searchPublicRepos(searchQuery: string, accessToken?: string): Promise<GitHubRepo[]> {
+  const response = await githubFetch(
+    `https://api.github.com/search/repositories?q=${encodeURIComponent(searchQuery)}&sort=stars&order=desc&per_page=30`,
+    accessToken
+  );
+
+  if (response.status === 401) {
+    throw new GitHubAuthError('search', 'repositories');
+  }
+
+  if (!response.ok) {
+    throw new Error(`GitHub API error: ${response.status}`);
+  }
+
+  const data = (await response.json()) as { items: GitHubRepo[] };
+  return data.items || [];
+}
+
+/**
  * Fetch all user repositories with pagination support (paginates through all results).
  */
 export async function getUserRepos(accessToken: string): Promise<GitHubRepo[]> {
