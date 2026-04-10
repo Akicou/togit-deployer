@@ -49,7 +49,7 @@ async function getOnlineClientToken(apiKey: string): Promise<string> {
  *   custom-domain — your own domain: opts.domain (e.g. myapp.com)
  */
 export async function createTunnel(
-  deploymentId: number,
+  deploymentId: number | null,
   localPort: number,
   apiKey: string,
   opts?: { type?: TunnelType; subDomain?: string; domain?: string }

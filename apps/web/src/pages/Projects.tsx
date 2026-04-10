@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
+import { useToast } from '../components/Toast';
 import type { User, Project, Repository } from '../types';
 
 interface ProjectDetailResponse {
@@ -116,6 +117,7 @@ function ProjectDetail({ user, projectId }: { user: User; projectId: number }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [showAddService, setShowAddService] = useState(false);
+  const toast = useToast();
 
   useEffect(() => { load(); }, [projectId]);
 
@@ -142,17 +144,45 @@ function ProjectDetail({ user, projectId }: { user: User; projectId: number }) {
   }
 
   async function createTunnel(repoId: number) {
-    await api.post(`/api/repos/${repoId}/tunnel`);
+    try {
+      const res = await api.post(`/api/repos/${repoId}/tunnel`);
+      if (res.ok) {
+        toast('Tunnel created', 'success');
+      } else {
+        const data = await res.json();
+        toast(data.error || 'Failed to create tunnel', 'error');
+      }
+    } catch {
+      toast('Failed to create tunnel — network error', 'error');
+    }
     await load();
   }
 
   async function stopTunnel(repoId: number) {
-    await api.delete(`/api/repos/${repoId}/tunnel`);
+    try {
+      const res = await api.delete(`/api/repos/${repoId}/tunnel`);
+      if (!res.ok) {
+        const data = await res.json();
+        toast(data.error || 'Failed to stop tunnel', 'error');
+      }
+    } catch {
+      toast('Failed to stop tunnel — network error', 'error');
+    }
     await load();
   }
 
   async function deployService(repoId: number) {
-    await api.post(`/api/repos/${repoId}/deploy`, {});
+    try {
+      const res = await api.post(`/api/repos/${repoId}/deploy`, {});
+      if (res.ok) {
+        toast('Deployment started', 'success');
+      } else {
+        const data = await res.json();
+        toast(data.error || 'Deploy failed', 'error');
+      }
+    } catch {
+      toast('Deploy failed — network error', 'error');
+    }
     await load();
   }
 

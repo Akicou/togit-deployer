@@ -17,7 +17,7 @@ export async function createServiceTunnel(repo: Repository, user: User): Promise
     return existing.rows[0];
   }
 
-  const created = await createTunnel(-1, repo.tunnel_port, authToken, { type: 'random' });
+  const created = await createTunnel(null, repo.tunnel_port, authToken, { type: 'random' });
   await startTunnel(created.tunnelId, authToken);
 
   const result = await query<ServiceTunnel>(
