@@ -395,12 +395,10 @@ async function assignTunnelPort(repoId: number, existing: number | null): Promis
   try {
     await client.query('BEGIN');
 
-    // Lock the repositories table to prevent concurrent reads of MAX
-    // This ensures atomic read-increment-write
+    // Get the maximum tunnel_port (no locking needed)
     const maxResult = await client.query<{ max: number }>(
       `SELECT COALESCE(MAX(tunnel_port), 9999) AS max
-       FROM repositories
-       FOR UPDATE`
+       FROM repositories`
     );
 
     const nextPort = maxResult.rows[0].max + 1;
@@ -411,12 +409,24 @@ async function assignTunnelPort(repoId: number, existing: number | null): Promis
     }
 
     // Update this specific repo with the new port
-    await client.query(
+    // The WHERE tunnel_port IS NULL prevents race conditions
+    const updateResult = await client.query(
       `UPDATE repositories
        SET tunnel_port = $1
        WHERE id = $2 AND tunnel_port IS NULL`,
       [nextPort, repoId]
     );
+
+    // If update affected 0 rows, another concurrent deployment assigned the port
+    if (updateResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      // Query the actual port assigned by the other transaction
+      const actual = await query<{ tunnel_port: number }>(
+        `SELECT tunnel_port FROM repositories WHERE id = $1`,
+        [repoId]
+      );
+      return actual.rows[0].tunnel_port;
+    }
 
     await client.query('COMMIT');
 
