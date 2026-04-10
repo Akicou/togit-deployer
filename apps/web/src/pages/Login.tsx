@@ -1,4 +1,6 @@
-import { motion } from 'framer-motion';
+import { Layers } from 'lucide-react';
+import { Button } from '../components/ui/button';
+import { Card, CardContent, CardHeader } from '../components/ui/card';
 
 interface LoginProps {
   onLogin: () => void;
@@ -6,129 +8,40 @@ interface LoginProps {
 
 export default function Login(_props: LoginProps) {
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: '#ffffff',
-      position: 'relative',
-      overflow: 'hidden',
-    }}>
-      {/* Grid pattern - minimalist brutalist style */}
-      <div style={{
-        position: 'absolute',
-        inset: 0,
-        backgroundImage: `
-          linear-gradient(#1a1a1a 1px, transparent 1px),
-          linear-gradient(90deg, #1a1a1a 1px, transparent 1px)
-        `,
-        backgroundSize: '40px 40px',
-        opacity: 0.05,
-      }} />
-
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      {/* Subtle grid background */}
+      <div
+        className="absolute inset-0 opacity-[0.02]"
         style={{
-          background: '#ffffff',
-          border: '4px solid #1a1a1a',
-          padding: 48,
-          textAlign: 'center',
-          maxWidth: 420,
-          width: '90%',
-          position: 'relative',
-          boxShadow: '8px 8px 0 #1a1a1a',
+          backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)',
+          backgroundSize: '40px 40px',
         }}
-      >
-        {/* Logo */}
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
-          style={{
-            width: 80,
-            height: 80,
-            margin: '0 auto 24px',
-            background: '#1a1a1a',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '4px 4px 0 #1a1a1a',
-          }}
-        >
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5">
-            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-          </svg>
-        </motion.div>
+      />
 
-        <h1 style={{
-          fontSize: 32,
-          fontWeight: 800,
-          color: '#1a1a1a',
-          marginBottom: 8,
-          letterSpacing: '-1px',
-        }}>
-          TOGIT DEPLOYER
-        </h1>
-
-        <p style={{
-          color: '#666',
-          fontSize: 14,
-          marginBottom: 32,
-          lineHeight: 1.6,
-          fontWeight: 500,
-        }}>
-          Deploy your GitHub repositories with Docker and expose them to the internet via Localtonet tunnels.
-        </p>
-
-        <motion.a
-          href="/api/auth/github"
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 12,
-            padding: '16px 32px',
-            background: '#1a1a1a',
-            color: '#ffffff',
-            textDecoration: 'none',
-            fontWeight: 800,
-            fontSize: 14,
-            letterSpacing: '1px',
-            textTransform: 'uppercase',
-            border: '3px solid #1a1a1a',
-            boxShadow: '6px 6px 0 #1a1a1a',
-            transition: 'all 0.1s ease',
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.boxShadow = '3px 3px 0 #1a1a1a';
-            e.currentTarget.style.transform = 'translate(3px, 3px)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.boxShadow = '6px 6px 0 #1a1a1a';
-            e.currentTarget.style.transform = 'translate(0, 0)';
-          }}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-          </svg>
-          Sign in with GitHub
-        </motion.a>
-
-        <p style={{
-          marginTop: 28,
-          fontSize: 11,
-          color: '#999',
-          fontWeight: 600,
-          letterSpacing: '0.3px',
-        }}>
-          By signing in, you agree to let TOGIT DEPLOYER access your GitHub repositories.
-        </p>
-      </motion.div>
+      <Card className="w-full max-w-sm relative">
+        <CardHeader className="text-center pb-2">
+          <div className="w-14 h-14 rounded-xl bg-primary flex items-center justify-center mx-auto mb-4">
+            <Layers className="w-7 h-7 text-primary-foreground" />
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight">Togit Deployer</h1>
+          <p className="text-sm text-muted-foreground leading-relaxed mt-1">
+            Deploy GitHub repositories with Docker and expose them via Localtonet tunnels.
+          </p>
+        </CardHeader>
+        <CardContent className="pt-4 space-y-4">
+          <Button className="w-full" size="lg" asChild>
+            <a href="/api/auth/github" className="flex items-center gap-3">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+              </svg>
+              Sign in with GitHub
+            </a>
+          </Button>
+          <p className="text-xs text-muted-foreground text-center">
+            By signing in, you allow Togit Deployer to access your GitHub repositories.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }

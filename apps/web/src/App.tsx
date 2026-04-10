@@ -12,6 +12,9 @@ import Sidebar from './components/Sidebar';
 import { ToastProvider } from './components/Toast';
 import { api } from './lib/api';
 import type { User } from './types';
+import { Button } from './components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
+import { Loader2 } from 'lucide-react';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -39,21 +42,8 @@ export default function App() {
 
   if (loading) {
     return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100vh',
-        background: '#ffffff',
-      }}>
-        <div style={{
-          width: 40,
-          height: 40,
-          border: '2px solid #1a1a1a',
-          background: '#1a1a1a',
-          animation: 'spin 1s linear infinite',
-        }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <div className="flex items-center justify-center h-screen bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -62,7 +52,6 @@ export default function App() {
     return <Login onLogin={checkAuth} />;
   }
 
-  // Show access request page for non-approved users
   if (user.access_level !== 'approved') {
     return <AccessPending user={user} onRecheck={checkAuth} />;
   }
@@ -70,14 +59,9 @@ export default function App() {
   return (
     <ToastProvider>
       <BrowserRouter>
-        <div style={{ display: 'flex', minHeight: '100vh' }}>
+        <div className="flex min-h-screen bg-background">
           <Sidebar user={user} onLogout={checkAuth} />
-          <main style={{
-            flex: 1,
-            marginLeft: 260,
-            padding: '32px',
-            background: '#ffffff',
-          }}>
+          <main className="flex-1 ml-64 p-8 min-h-screen">
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={<Dashboard user={user} />} />
@@ -109,9 +93,7 @@ function AccessPending({ user, onRecheck }: { user: User; onRecheck: () => void 
       } else {
         const data = await response.json();
         setError(data.error || 'Failed to request access');
-        if (data.error === 'Access request already pending for this user') {
-          setRequested(true);
-        }
+        if (data.error === 'Access request already pending for this user') setRequested(true);
       }
     } catch {
       setError('Network error');
@@ -121,145 +103,47 @@ function AccessPending({ user, onRecheck }: { user: User; onRecheck: () => void 
   const statusMessage: Record<string, string> = {
     pending: requested ? 'Your access request is pending admin approval.' : 'Your account is awaiting approval.',
     blocked: 'Your access has been restricted. Contact an administrator.',
-    banned: 'Your account has been banned.',
+    banned:  'Your account has been banned.',
   };
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: '#ffffff',
-    }}>
-      <div style={{
-        background: '#ffffff',
-        border: '4px solid #1a1a1a',
-        padding: 48,
-        textAlign: 'center',
-        maxWidth: 440,
-        width: '90%',
-        boxShadow: '8px 8px 0 #1a1a1a',
-      }}>
-        <div style={{
-          width: 64,
-          height: 64,
-          margin: '0 auto 24px',
-          border: '3px solid #1a1a1a',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontWeight: 800,
-          color: '#1a1a1a',
-          fontSize: 24,
-        }}>
-          {user.github_login.charAt(0).toUpperCase()}
-        </div>
-
-        <h1 style={{
-          fontSize: 28,
-          fontWeight: 800,
-          color: '#1a1a1a',
-          marginBottom: 8,
-          letterSpacing: '-1px',
-        }}>
-          ACCESS REQUIRED
-        </h1>
-
-        <p style={{
-          color: '#666',
-          fontSize: 14,
-          marginBottom: 32,
-          fontWeight: 600,
-        }}>
-          Signed in as <strong>{user.github_login}</strong>
-        </p>
-
-        <div style={{
-          padding: 20,
-          border: '3px solid #1a1a1a',
-          background: '#f5f5f5',
-          marginBottom: 28,
-        }}>
-          <p style={{
-            color: '#1a1a1a',
-            fontWeight: 700,
-            fontSize: 14,
-          }}>
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center pb-4">
+          <div className="w-14 h-14 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xl font-bold mx-auto mb-3">
+            {user.github_login.charAt(0).toUpperCase()}
+          </div>
+          <CardTitle className="text-2xl">Access Required</CardTitle>
+          <p className="text-sm text-muted-foreground">Signed in as <strong>{user.github_login}</strong></p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="p-3 rounded-md bg-muted text-sm text-center font-medium">
             {statusMessage[user.access_level] || statusMessage.pending}
-          </p>
-        </div>
+          </div>
 
-        {error && (
-          <p style={{ color: '#1a1a1a', fontWeight: 700, marginBottom: 16, fontSize: 13 }}>{error}</p>
-        )}
+          {error && <p className="text-sm text-destructive text-center">{error}</p>}
 
-        {!requested && user.access_level === 'pending' && (
-          <button
-            onClick={handleRequestAccess}
-            style={{
-              padding: '16px 32px',
-              border: '3px solid #1a1a1a',
-              background: '#1a1a1a',
-              color: '#ffffff',
-              fontWeight: 800,
-              cursor: 'pointer',
-              fontSize: 14,
-              textTransform: 'uppercase',
-              letterSpacing: '1px',
-              boxShadow: '6px 6px 0 #1a1a1a',
-              transition: 'all 0.1s ease',
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.boxShadow = '3px 3px 0 #1a1a1a';
-              e.currentTarget.style.transform = 'translate(3px, 3px)';
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.boxShadow = '6px 6px 0 #1a1a1a';
-              e.currentTarget.style.transform = 'translate(0, 0)';
-            }}
+          {!requested && user.access_level === 'pending' && (
+            <Button className="w-full" onClick={handleRequestAccess}>
+              Request Access
+            </Button>
+          )}
+
+          {requested && (
+            <Button variant="outline" className="w-full" onClick={onRecheck}>
+              Check Again
+            </Button>
+          )}
+
+          <Button
+            variant="ghost"
+            className="w-full text-muted-foreground"
+            onClick={async () => { await api.post('/api/auth/logout'); onRecheck(); }}
           >
-            Request Access
-          </button>
-        )}
-
-        {requested && (
-          <button
-            onClick={onRecheck}
-            style={{
-              padding: '12px 24px',
-              border: '2px solid #1a1a1a',
-              background: '#ffffff',
-              color: '#1a1a1a',
-              fontWeight: 800,
-              cursor: 'pointer',
-              fontSize: 12,
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-            }}
-          >
-            Check Again
-          </button>
-        )}
-
-        <button
-          onClick={async () => { await api.post('/api/auth/logout'); onRecheck(); }}
-          style={{
-            display: 'block',
-            margin: '24px auto 0',
-            padding: '8px 16px',
-            border: '2px solid #1a1a1a',
-            background: 'transparent',
-            color: '#666',
-            fontWeight: 700,
-            cursor: 'pointer',
-            fontSize: 12,
-            textTransform: 'uppercase',
-          }}
-        >
-          Sign Out
-        </button>
-      </div>
+            Sign Out
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 }

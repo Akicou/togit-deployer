@@ -1,18 +1,23 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../lib/api';
 import RepoCard from '../components/RepoCard';
 import DeployBadge from '../components/DeployBadge';
 import { useDeployments } from '../hooks/useDeployments';
 import { useToast } from '../components/Toast';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Textarea } from '../components/ui/textarea';
+import { Label } from '../components/ui/label';
+import { Badge } from '../components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
+import { Separator } from '../components/ui/separator';
+import { ArrowLeft, Plus, Rocket, ExternalLink, RefreshCw, Trash2, Loader2, X } from 'lucide-react';
 import type { User, Repository, Project } from '../types';
 
-interface RepositoriesProps {
-  user: User;
-}
-
-export default function Repositories({ user }: RepositoriesProps) {
+export default function Repositories({ user }: { user: User }) {
   const { id } = useParams();
   const [repos, setRepos] = useState<Repository[]>([]);
   const [filteredRepos, setFilteredRepos] = useState<Repository[]>([]);
@@ -25,443 +30,164 @@ export default function Repositories({ user }: RepositoriesProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'status' | 'last_deployed'>('name');
   const toast = useToast();
-
   const canManage = user.role === 'admin' || user.role === 'deployer';
 
-  useEffect(() => {
-    loadRepos();
-    loadProjects();
-  }, []);
-
-  useEffect(() => {
-    filterAndSortRepos();
-  }, [repos, selectedProject, searchQuery, sortBy]);
+  useEffect(() => { loadRepos(); loadProjects(); }, []);
+  useEffect(() => { filterAndSortRepos(); }, [repos, selectedProject, searchQuery, sortBy]);
 
   async function loadRepos() {
     try {
-      const response = await api.get('/api/repos');
-      if (response.ok) {
-        const data = await response.json();
-        setRepos(data.repos);
-      }
-    } catch (error) {
-      console.error('Failed to load repos:', error);
-    } finally {
-      setLoading(false);
-    }
+      const r = await api.get('/api/repos');
+      if (r.ok) { const d = await r.json(); setRepos(d.repos); }
+    } finally { setLoading(false); }
   }
 
   async function loadProjects() {
     try {
-      const response = await api.get('/api/projects');
-      if (response.ok) {
-        const data = await response.json();
-        setProjects(data.projects || []);
-      }
-    } catch (error) {
-      console.error('Failed to load projects:', error);
-    }
+      const r = await api.get('/api/projects');
+      if (r.ok) { const d = await r.json(); setProjects(d.projects || []); }
+    } catch {}
   }
 
   function filterAndSortRepos() {
     let filtered = [...repos];
-
-    // Filter by project
-    if (selectedProject !== null) {
-      filtered = filtered.filter(repo => repo.project_id === selectedProject);
-    }
-
-    // Filter by search query
+    if (selectedProject !== null) filtered = filtered.filter(r => r.project_id === selectedProject);
     if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(repo =>
-        repo.full_name.toLowerCase().includes(query) ||
-        repo.service_name.toLowerCase().includes(query) ||
-        (repo.project_name && repo.project_name.toLowerCase().includes(query))
-      );
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(r => r.full_name.toLowerCase().includes(q) || r.service_name.toLowerCase().includes(q) || (r.project_name && r.project_name.toLowerCase().includes(q)));
     }
-
-    // Sort
     filtered.sort((a, b) => {
-      switch (sortBy) {
-        case 'name':
-          return a.full_name.localeCompare(b.full_name);
-        case 'status':
-          const statusOrder = { 'running': 0, 'building': 1, 'pending': 2, 'failed': 3, 'never': 4 };
-          const statusA = statusOrder[a.last_deployment_status as keyof typeof statusOrder] ?? 4;
-          const statusB = statusOrder[b.last_deployment_status as keyof typeof statusOrder] ?? 4;
-          return statusA - statusB;
-        case 'last_deployed':
-          const timeA = new Date(a.created_at).getTime();
-          const timeB = new Date(b.created_at).getTime();
-          return timeB - timeA;
-        default:
-          return 0;
+      if (sortBy === 'name') return a.full_name.localeCompare(b.full_name);
+      if (sortBy === 'status') {
+        const ord: Record<string, number> = { running: 0, building: 1, pending: 2, failed: 3, never: 4 };
+        return (ord[a.last_deployment_status ?? 'never'] ?? 4) - (ord[b.last_deployment_status ?? 'never'] ?? 4);
       }
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
-
     setFilteredRepos(filtered);
-  }
-
-  async function handleDeployClick(repoId: number, repoName: string) {
-    setShowDeployModal({ repoId, repoName });
   }
 
   async function handleDeployConfirm() {
     if (!showDeployModal) return;
     setDeployingRepo(showDeployModal.repoId);
     try {
-      const response = await api.post(`/api/repos/${showDeployModal.repoId}/deploy`, {});
-      if (response.ok) {
-        toast('Deployment started', 'success');
-        await loadRepos();
-        setShowDeployModal(null);
-      } else {
-        const data = await response.json().catch(() => ({}));
-        toast(data.error || `Deploy failed (${response.status})`, 'error');
-      }
-    } catch (error) {
-      toast('Deploy failed — network error', 'error');
-    } finally {
-      setDeployingRepo(null);
-    }
+      const r = await api.post(`/api/repos/${showDeployModal.repoId}/deploy`, {});
+      if (r.ok) { toast('Deployment started', 'success'); await loadRepos(); setShowDeployModal(null); }
+      else { const d = await r.json().catch(() => ({})); toast(d.error || 'Deploy failed', 'error'); }
+    } catch { toast('Deploy failed — network error', 'error'); }
+    finally { setDeployingRepo(null); }
   }
 
   if (id) {
     const repo = repos.find((r) => r.id === parseInt(id, 10));
-    return repo ? (
-      <RepoDetail repo={repo} user={user} onRefresh={loadRepos} />
-    ) : (
-      <div style={{ color: '#666', fontWeight: 600 }}>Loading...</div>
-    );
+    if (!repo && !loading) return <div className="flex items-center justify-center py-20 text-muted-foreground">Service not found.</div>;
+    if (!repo) return <div className="flex items-center justify-center py-20 text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mr-2" />Loading...</div>;
+    return <RepoDetail repo={repo} user={user} onRefresh={loadRepos} />;
   }
 
   return (
-    <div>
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 24,
-        }}
-      >
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 style={{ fontSize: 36, fontWeight: 800, color: '#1a1a1a', marginBottom: 8, letterSpacing: '-1px' }}>
-            SERVICES
-          </h1>
-          <p style={{ color: '#666', fontWeight: 600, fontSize: 14 }}>
-            {filteredRepos.length} {filteredRepos.length === 1 ? 'service' : 'services'} · {repos.length} total
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">Services</h1>
+          <p className="text-muted-foreground text-sm mt-1">{filteredRepos.length} of {repos.length} services</p>
         </div>
-        {canManage && (
-          <button
-            onClick={() => setShowAddModal(true)}
-            style={{
-              padding: '14px 24px',
-              border: '3px solid #1a1a1a',
-              background: '#1a1a1a',
-              color: '#ffffff',
-              fontWeight: 800,
-              cursor: 'pointer',
-              fontSize: 13,
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              boxShadow: '4px 4px 0 #1a1a1a',
-              transition: 'all 0.1s ease',
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.boxShadow = '2px 2px 0 #1a1a1a';
-              e.currentTarget.style.transform = 'translate(2px, 2px)';
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.boxShadow = '4px 4px 0 #1a1a1a';
-              e.currentTarget.style.transform = 'translate(0, 0)';
-            }}
-          >
-            + Add Service
-          </button>
-        )}
-      </motion.div>
+        {canManage && <Button onClick={() => setShowAddModal(true)}><Plus className="w-4 h-4" />Add Service</Button>}
+      </div>
 
-      {/* Filters and Search */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        style={{
-          background: '#ffffff',
-          border: '3px solid #1a1a1a',
-          padding: 20,
-          marginBottom: 24,
-          boxShadow: '4px 4px 0 #1a1a1a',
-        }}
-      >
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, alignItems: 'end' }}>
-          {/* Project Filter */}
-          <div>
-            <label style={{
-              display: 'block',
-              color: '#666',
-              fontSize: 11,
-              marginBottom: 8,
-              fontWeight: 800,
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-            }}>
-              Filter by Project
-            </label>
-            <select
-              value={selectedProject ?? ''}
-              onChange={(e) => setSelectedProject(e.target.value ? parseInt(e.target.value, 10) : null)}
-              style={{
-                width: '100%',
-                padding: '12px 14px',
-                border: '2px solid #1a1a1a',
-                background: '#f5f5f5',
-                color: '#1a1a1a',
-                fontSize: 14,
-                fontWeight: 600,
-                outline: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              <option value="">All Projects</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name} ({repos.filter(r => r.project_id === project.id).length} services)
-                </option>
-              ))}
-            </select>
+      {/* Filters */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Project</Label>
+              <Select value={selectedProject !== null ? String(selectedProject) : '__all__'} onValueChange={(v) => setSelectedProject(v === '__all__' ? null : parseInt(v, 10))}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All Projects</SelectItem>
+                  {projects.map((p) => (
+                    <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Search</Label>
+              <Input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Service name or repo..." className="h-9" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Sort By</Label>
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name">Name</SelectItem>
+                  <SelectItem value="status">Status</SelectItem>
+                  <SelectItem value="last_deployed">Last Deployed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-
-          {/* Search */}
-          <div>
-            <label style={{
-              display: 'block',
-              color: '#666',
-              fontSize: 11,
-              marginBottom: 8,
-              fontWeight: 800,
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-            }}>
-              Search Services
-            </label>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Service name, repo, or project..."
-              style={{
-                width: '100%',
-                padding: '12px 14px',
-                border: '2px solid #1a1a1a',
-                background: '#f5f5f5',
-                color: '#1a1a1a',
-                fontSize: 14,
-                fontWeight: 600,
-                outline: 'none',
-              }}
-            />
-          </div>
-
-          {/* Sort */}
-          <div>
-            <label style={{
-              display: 'block',
-              color: '#666',
-              fontSize: 11,
-              marginBottom: 8,
-              fontWeight: 800,
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-            }}>
-              Sort By
-            </label>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as 'name' | 'status' | 'last_deployed')}
-              style={{
-                width: '100%',
-                padding: '12px 14px',
-                border: '2px solid #1a1a1a',
-                background: '#f5f5f5',
-                color: '#1a1a1a',
-                fontSize: 14,
-                fontWeight: 600,
-                outline: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              <option value="name">Name</option>
-              <option value="status">Status</option>
-              <option value="last_deployed">Last Deployed</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Active Filters Display */}
-        {(selectedProject !== null || searchQuery.trim()) && (
-          <div style={{
-            marginTop: 16,
-            paddingTop: 16,
-            borderTop: '2px solid #e5e5e5',
-            display: 'flex',
-            gap: 8,
-            flexWrap: 'wrap',
-          }}>
-            {selectedProject !== null && (
-              <button
-                onClick={() => setSelectedProject(null)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '6px 12px',
-                  border: '2px solid #1a1a1a',
-                  background: '#1a1a1a',
-                  color: '#ffffff',
-                  fontSize: 12,
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                }}
-              >
-                Project: {projects.find(p => p.id === selectedProject)?.name} ×
-              </button>
-            )}
-            {searchQuery.trim() && (
-              <button
-                onClick={() => setSearchQuery('')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '6px 12px',
-                  border: '2px solid #1a1a1a',
-                  background: '#1a1a1a',
-                  color: '#ffffff',
-                  fontSize: 12,
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                }}
-              >
-                Search: {searchQuery} ×
-              </button>
-            )}
-          </div>
-        )}
-      </motion.div>
-
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#666', fontWeight: 700 }}>
-          Loading repositories...
-        </div>
-      ) : filteredRepos.length === 0 ? (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          style={{
-            textAlign: 'center',
-            padding: 60,
-            background: '#ffffff',
-            border: '3px dashed #1a1a1a',
-          }}
-        >
-          <div style={{ marginBottom: 16 }}>
-            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" strokeWidth="1.5" style={{ margin: '0 auto', opacity: 0.3 }}>
-              <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
-            </svg>
-          </div>
-          <h3 style={{ color: '#1a1a1a', marginBottom: 8, fontWeight: 800, fontSize: 20, textTransform: 'uppercase' }}>
-            {repos.length === 0 ? 'No services yet' : 'No matching services'}
-          </h3>
-          <p style={{ color: '#666', marginBottom: 28, fontWeight: 600 }}>
-            {repos.length === 0
-              ? 'Create your first service to start deploying'
-              : 'Try adjusting your filters or search query'}
-          </p>
-          {canManage && repos.length === 0 && (
-            <button
-              onClick={() => setShowAddModal(true)}
-              style={{
-                padding: '14px 24px',
-                border: '3px solid #1a1a1a',
-                background: '#1a1a1a',
-                color: '#ffffff',
-                fontWeight: 800,
-                cursor: 'pointer',
-                fontSize: 13,
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-                boxShadow: '4px 4px 0 #1a1a1a',
-              }}
-            >
-              Add Your First Service
-            </button>
+          {(selectedProject !== null || searchQuery.trim()) && (
+            <div className="flex gap-2 mt-3 pt-3 border-t flex-wrap">
+              {selectedProject !== null && (
+                <Badge variant="secondary" className="cursor-pointer gap-1" onClick={() => setSelectedProject(null)}>
+                  {projects.find(p => p.id === selectedProject)?.name}<X className="w-3 h-3" />
+                </Badge>
+              )}
+              {searchQuery.trim() && (
+                <Badge variant="secondary" className="cursor-pointer gap-1" onClick={() => setSearchQuery('')}>
+                  "{searchQuery}"<X className="w-3 h-3" />
+                </Badge>
+              )}
+            </div>
           )}
-        </motion.div>
+        </CardContent>
+      </Card>
+
+      {/* Repo grid */}
+      {loading ? (
+        <div className="flex items-center justify-center py-20 text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mr-2" />Loading...</div>
+      ) : filteredRepos.length === 0 ? (
+        <Card>
+          <CardContent className="py-16 text-center space-y-3">
+            <p className="text-muted-foreground">{repos.length === 0 ? 'No services yet.' : 'No matching services.'}</p>
+            {canManage && repos.length === 0 && <Button onClick={() => setShowAddModal(true)}><Plus className="w-4 h-4" />Add Your First Service</Button>}
+          </CardContent>
+        </Card>
       ) : (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-          gap: 20,
-        }}>
-          {filteredRepos.map((repo, index) => (
-            <motion.div
-              key={repo.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.05 }}
-            >
-              <RepoCard
-                repo={repo}
-                canDeploy={canManage}
-                onDeploy={(id, name) => handleDeployClick(id, name)}
-              />
-            </motion.div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {filteredRepos.map((repo) => (
+            <RepoCard key={repo.id} repo={repo} canDeploy={canManage} onDeploy={(id, name) => setShowDeployModal({ repoId: id, repoName: name })} />
           ))}
         </div>
       )}
 
-      <AnimatePresence>
-        {showDeployModal && (
-          <DeployModal
-            showDeployModal={showDeployModal}
-            onClose={() => setShowDeployModal(null)}
-            onDeploy={handleDeployConfirm}
-            deploying={deployingRepo === showDeployModal.repoId}
-          />
-        )}
-      </AnimatePresence>
+      {/* Deploy confirm dialog */}
+      <Dialog open={!!showDeployModal} onOpenChange={() => setShowDeployModal(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Deploy {showDeployModal?.repoName}?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">This will trigger a new deployment for this service.</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeployModal(null)}>Cancel</Button>
+            <Button onClick={handleDeployConfirm} disabled={deployingRepo === showDeployModal?.repoId}>
+              {deployingRepo === showDeployModal?.repoId ? <><Loader2 className="w-4 h-4 animate-spin" />Deploying...</> : <><Rocket className="w-4 h-4" />Deploy</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      <AnimatePresence>
-        {showAddModal && (
-          <QuickAddServiceModal
-            projects={projects}
-            onClose={() => setShowAddModal(false)}
-            onAdded={() => {
-              loadRepos();
-              setShowAddModal(false);
-            }}
-          />
-        )}
-      </AnimatePresence>
+      {showAddModal && (
+        <AddRepoModal projects={projects} onClose={() => setShowAddModal(false)} onAdd={() => { loadRepos(); setShowAddModal(false); }} />
+      )}
     </div>
   );
 }
 
 function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; onRefresh: () => void }) {
-  const { deployments, loading } = useDeployments(repo.id);
+  const { deployments, loading: deploysLoading } = useDeployments(repo.id);
   const navigate = useNavigate();
   const toast = useToast();
-  const [showDeployModal, setShowDeployModal] = useState<{ repoId: number; repoName: string } | null>(null);
+  const [showDeployModal, setShowDeployModal] = useState(false);
   const [deployForce, setDeployForce] = useState(false);
   const [config, setConfig] = useState({
     root_path: repo.root_path,
@@ -474,7 +200,9 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
     tunnel_subdomain: repo.tunnel_subdomain ?? '',
     tunnel_domain: repo.tunnel_domain ?? '',
   });
-  const [envVars, setEnvVars] = useState<Record<string, string>>(repo.deployment_env_vars || {});
+  const [envVars, setEnvVars] = useState<Record<string, string>>(
+    typeof repo.deployment_env_vars === 'object' ? (repo.deployment_env_vars as Record<string, string>) : {}
+  );
   const [newKey, setNewKey] = useState('');
   const [newValue, setNewValue] = useState('');
   const [saving, setSaving] = useState(false);
@@ -483,665 +211,303 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
   const [resettingTunnel, setResettingTunnel] = useState(false);
   const [showRawEditor, setShowRawEditor] = useState(false);
 
+  const isDeploying = repo.last_deployment_status === 'pending' || repo.last_deployment_status === 'building';
+  const canAct = user.role === 'admin' || user.role === 'deployer';
+
   async function handleDeployConfirm() {
-    if (!showDeployModal) return;
     setDeploying(true);
     try {
-      const response = await api.post(`/api/repos/${showDeployModal.repoId}/deploy`, {
-        force: deployForce,
-      });
-      if (response.ok) {
-        toast('Deployment started', 'success');
-        setShowDeployModal(null);
-        setDeployForce(false);
-        onRefresh();
-      } else {
-        const data = await response.json().catch(() => ({}));
-        toast(data.error || `Deploy failed (${response.status})`, 'error');
-      }
-    } catch (error) {
-      toast('Deploy failed — network error', 'error');
-    } finally {
-      setDeploying(false);
-    }
+      const r = await api.post(`/api/repos/${repo.id}/deploy`, { force: deployForce });
+      if (r.ok) { toast('Deployment started', 'success'); setShowDeployModal(false); setDeployForce(false); onRefresh(); }
+      else { const d = await r.json().catch(() => ({})); toast(d.error || 'Deploy failed', 'error'); }
+    } catch { toast('Deploy failed — network error', 'error'); }
+    finally { setDeploying(false); }
   }
 
   async function handleSave() {
     setSaving(true);
     try {
-      const response = await api.patch(`/api/repos/${repo.id}`, {
+      const r = await api.patch(`/api/repos/${repo.id}`, {
         ...config,
         deployment_env_vars: envVars,
         tunnel_subdomain: config.tunnel_subdomain || null,
         tunnel_domain: config.tunnel_domain || null,
       });
-      if (response.ok) {
-        toast('Changes saved', 'success');
-        onRefresh();
-      } else {
-        const data = await response.json().catch(() => ({}));
-        toast(data.error || 'Failed to save changes', 'error');
-      }
-    } catch (error) {
-      toast('Failed to save — network error', 'error');
-    } finally {
-      setSaving(false);
-    }
+      if (r.ok) { toast('Changes saved', 'success'); onRefresh(); }
+      else { const d = await r.json().catch(() => ({})); toast(d.error || 'Failed to save', 'error'); }
+    } catch { toast('Failed to save — network error', 'error'); }
+    finally { setSaving(false); }
   }
 
   async function handleResetTunnel() {
-    if (!window.confirm(`Reset tunnel for ${repo.full_name}? The current tunnel URL will be deleted and a new one created on the next deploy.`)) return;
+    if (!window.confirm(`Reset tunnel for ${repo.full_name}? A new URL will be created on next deploy.`)) return;
     setResettingTunnel(true);
     try {
-      const response = await api.post(`/api/repos/${repo.id}/reset-tunnel`);
-      if (response.ok) {
-        toast('Tunnel reset — deploy again to get a new URL', 'success');
-        onRefresh();
-      } else {
-        const data = await response.json().catch(() => ({}));
-        toast(data.error || 'Failed to reset tunnel', 'error');
-      }
-    } catch {
-      toast('Failed to reset tunnel — network error', 'error');
-    } finally {
-      setResettingTunnel(false);
-    }
+      const r = await api.post(`/api/repos/${repo.id}/reset-tunnel`);
+      if (r.ok) { toast('Tunnel reset — deploy again to get new URL', 'success'); onRefresh(); }
+      else { const d = await r.json().catch(() => ({})); toast(d.error || 'Failed to reset tunnel', 'error'); }
+    } catch { toast('Network error', 'error'); }
+    finally { setResettingTunnel(false); }
   }
 
   async function handleDelete() {
-    if (!window.confirm(`Delete ${repo.full_name}? This will remove all deployments and logs.`)) return;
+    if (!window.confirm(`Delete ${repo.full_name}? This removes all deployments and logs.`)) return;
     setDeleting(true);
     try {
-      const response = await api.delete(`/api/repos/${repo.id}`);
-      if (response.ok) {
-        toast(`${repo.full_name} deleted`, 'success');
-        onRefresh();
-        navigate('/repositories');
-      } else {
-        const data = await response.json().catch(() => ({}));
-        toast(data.error || 'Failed to delete repository', 'error');
-      }
-    } catch (error) {
-      toast('Failed to delete — network error', 'error');
-    } finally {
-      setDeleting(false);
-    }
+      const r = await api.delete(`/api/repos/${repo.id}`);
+      if (r.ok) { toast(`Deleted ${repo.full_name}`, 'success'); onRefresh(); navigate('/repositories'); }
+      else { const d = await r.json().catch(() => ({})); toast(d.error || 'Failed to delete', 'error'); }
+    } catch { toast('Network error', 'error'); }
+    finally { setDeleting(false); }
   }
 
+  const tunnelUrl = repo.tunnel_url || repo.last_tunnel_url;
+
   return (
-    <div>
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        <Link
-          to="/repositories"
-          style={{
-            color: '#666',
-            textDecoration: 'none',
-            fontSize: 13,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 4,
-            marginBottom: 20,
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-          }}
-        >
-          ← Back
-        </Link>
-
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          marginBottom: 36,
-        }}>
-          <div>
-            <h1 style={{ fontSize: 32, fontWeight: 800, color: '#1a1a1a', marginBottom: 12, letterSpacing: '-1px' }}>
-              {repo.full_name}
-            </h1>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <DeployBadge status={repo.last_deployment_status || 'never'} />
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              {(repo.tunnel_url || repo.last_tunnel_url) && (
-                <a
-                  href={(repo.tunnel_url || repo.last_tunnel_url)!}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    padding: '6px 12px',
-                    border: '2px solid #1a1a1a',
-                    background: '#1a1a1a',
-                    color: '#ffffff',
-                    fontSize: 12,
-                    fontWeight: 800,
-                    textDecoration: 'none',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                    boxShadow: '2px 2px 0 #1a1a1a',
-                  }}
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                    <polyline points="15 3 21 3 21 9" />
-                    <line x1="10" y1="14" x2="21" y2="3" />
-                  </svg>
-                  {repo.tunnel_url || repo.last_tunnel_url}
-                </a>
-              )}
-              {repo.tunnel_port && (
-                <span style={{ fontSize: 11, color: '#666', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>
-                  :{repo.tunnel_port}→:{repo.container_port ?? 3000}
-                </span>
-              )}
-              {(user.role === 'admin' || user.role === 'deployer') && (
-                <button
-                  onClick={handleResetTunnel}
-                  disabled={resettingTunnel}
-                  title="Delete current tunnel and create a fresh one on next deploy"
-                  style={{
-                    padding: '4px 10px',
-                    border: '2px solid #1a1a1a',
-                    background: '#ffffff',
-                    color: '#1a1a1a',
-                    fontWeight: 700,
-                    cursor: resettingTunnel ? 'not-allowed' : 'pointer',
-                    fontSize: 11,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                    opacity: resettingTunnel ? 0.5 : 1,
-                  }}
-                >
-                  {resettingTunnel ? '...' : 'Reset Tunnel'}
-                </button>
-              )}
-            </div>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            {user.role === 'admin' && (
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                style={{
-                  padding: '14px 20px',
-                  border: '3px solid #1a1a1a',
-                  background: '#ffffff',
-                  color: '#1a1a1a',
-                  fontWeight: 800,
-                  cursor: deleting ? 'not-allowed' : 'pointer',
-                  fontSize: 13,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  boxShadow: deleting ? '2px 2px 0 #1a1a1a' : '4px 4px 0 #1a1a1a',
-                  transition: 'all 0.1s ease',
-                  opacity: deleting ? 0.6 : 1,
-                }}
-              >
-                {deleting ? 'Deleting...' : 'Delete'}
-              </button>
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <Button variant="ghost" size="sm" className="mb-3" asChild>
+            <Link to="/repositories"><ArrowLeft className="w-4 h-4" />Back</Link>
+          </Button>
+          <h1 className="text-2xl font-bold tracking-tight">{repo.full_name}</h1>
+          <div className="flex items-center gap-2 flex-wrap mt-2">
+            <DeployBadge status={repo.last_deployment_status || 'never'} />
+            {tunnelUrl && (
+              <a href={tunnelUrl} target="_blank" rel="noopener noreferrer"
+                className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                <ExternalLink className="w-3 h-3" />{tunnelUrl}
+              </a>
             )}
-            {(user.role === 'admin' || user.role === 'deployer') && (() => {
-              const isDeploying = repo.last_deployment_status === 'pending' || repo.last_deployment_status === 'building';
-              return (
-                <button
-                  onClick={() => {
-                    if (!isDeploying) {
-                      setShowDeployModal({ repoId: repo.id, repoName: repo.full_name });
-                    }
-                  }}
-                  disabled={isDeploying}
-                  style={{
-                    padding: '14px 24px',
-                    border: '3px solid #1a1a1a',
-                    background: isDeploying ? '#f5f5f5' : '#1a1a1a',
-                    color: isDeploying ? '#666' : '#ffffff',
-                    fontWeight: 800,
-                    cursor: isDeploying ? 'not-allowed' : 'pointer',
-                    fontSize: 13,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                    boxShadow: isDeploying ? '2px 2px 0 #1a1a1a' : '6px 6px 0 #1a1a1a',
-                    transition: 'all 0.1s ease',
-                  }}
-                >
-                  {isDeploying ? 'Deploying...' : 'Deploy Now'}
-                </button>
-              );
-            })()}
+            {repo.tunnel_port && (
+              <span className="font-mono text-xs text-muted-foreground">:{repo.tunnel_port}→:{repo.container_port ?? 3000}</span>
+            )}
+            {canAct && (
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleResetTunnel} disabled={resettingTunnel}>
+                {resettingTunnel ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                Reset Tunnel
+              </Button>
+            )}
           </div>
         </div>
-      </motion.div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-        {/* Config Panel */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          style={{
-            background: '#ffffff',
-            border: '3px solid #1a1a1a',
-            padding: 28,
-            boxShadow: '4px 4px 0 #1a1a1a',
-          }}
-        >
-          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginBottom: 24, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Configuration
-          </h2>
-
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Service Name
-            </label>
-            <input
-              type="text"
-              value={config.service_name}
-              onChange={(e) => setConfig({ ...config, service_name: e.target.value })}
-              style={{
-                width: '100%',
-                padding: '12px 14px',
-                border: '2px solid #1a1a1a',
-                background: '#f5f5f5',
-                color: '#1a1a1a',
-                fontSize: 14,
-                fontWeight: 600,
-                outline: 'none',
-              }}
-              placeholder="app"
-            />
-            <p style={{ color: '#999', fontSize: 11, marginTop: 4, fontWeight: 600 }}>For monorepo: use different names (frontend, backend, api, web)</p>
-          </div>
-
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Root Path
-            </label>
-            <input
-              type="text"
-              value={config.root_path}
-              onChange={(e) => setConfig({ ...config, root_path: e.target.value })}
-              style={{
-                width: '100%',
-                padding: '12px 14px',
-                border: '2px solid #1a1a1a',
-                background: '#f5f5f5',
-                color: '#1a1a1a',
-                fontSize: 14,
-                fontWeight: 600,
-                outline: 'none',
-              }}
-              placeholder="/"
-            />
-          </div>
-
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Deploy Mode
-            </label>
-            <select
-              value={config.deploy_mode}
-              onChange={(e) => setConfig({ ...config, deploy_mode: e.target.value as 'release' | 'commit' })}
-              style={{
-                width: '100%',
-                padding: '12px 14px',
-                border: '2px solid #1a1a1a',
-                background: '#f5f5f5',
-                color: '#1a1a1a',
-                fontSize: 14,
-                fontWeight: 600,
-                outline: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              <option value="release">Release — deploy on new tags</option>
-              <option value="commit">Commit — deploy on new commits</option>
-            </select>
-          </div>
-
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Watch Branch
-            </label>
-            <input
-              type="text"
-              value={config.watch_branch}
-              onChange={(e) => setConfig({ ...config, watch_branch: e.target.value })}
-              style={{
-                width: '100%',
-                padding: '12px 14px',
-                border: '2px solid #1a1a1a',
-                background: '#f5f5f5',
-                color: '#1a1a1a',
-                fontSize: 14,
-                fontWeight: 600,
-                outline: 'none',
-              }}
-              placeholder="main"
-            />
-          </div>
-
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={config.enabled}
-                onChange={(e) => setConfig({ ...config, enabled: e.target.checked })}
-                style={{ width: 18, height: 18, accentColor: '#1a1a1a', cursor: 'pointer' }}
-              />
-              <span style={{ color: '#1a1a1a', fontWeight: 700, fontSize: 14 }}>Auto-deploy enabled</span>
-            </label>
-          </div>
-
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Container Port
-            </label>
-            <input
-              type="number"
-              value={config.container_port}
-              onChange={(e) => setConfig({ ...config, container_port: parseInt(e.target.value, 10) || 3000 })}
-              style={{
-                width: '100%', padding: '12px 14px', border: '2px solid #1a1a1a',
-                background: '#f5f5f5', color: '#1a1a1a', fontSize: 14, fontWeight: 600, outline: 'none',
-              }}
-              placeholder="3000"
-              min="1"
-              max="65535"
-            />
-            <p style={{ color: '#999', fontSize: 11, marginTop: 4, fontWeight: 600 }}>Port your app listens on inside the container</p>
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Tunnel URL Mode
-            </label>
-            <select
-              value={config.tunnel_type}
-              onChange={(e) => setConfig({ ...config, tunnel_type: e.target.value as 'random' | 'subdomain' | 'custom-domain' })}
-              style={{
-                width: '100%', padding: '12px 14px', border: '2px solid #1a1a1a',
-                background: '#f5f5f5', color: '#1a1a1a', fontSize: 14, fontWeight: 600,
-                outline: 'none', cursor: 'pointer',
-              }}
-            >
-              <option value="random">Random subdomain (auto)</option>
-              <option value="subdomain">Custom subdomain on localto.net</option>
-              <option value="custom-domain">Custom domain (your own)</option>
-            </select>
-          </div>
-
-          {config.tunnel_type === 'subdomain' && (
-            <>
-              <div style={{ marginBottom: 12 }}>
-                <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Subdomain Name
-                </label>
-                <input
-                  type="text"
-                  value={config.tunnel_subdomain}
-                  onChange={(e) => setConfig({ ...config, tunnel_subdomain: e.target.value })}
-                  style={{ width: '100%', padding: '12px 14px', border: '2px solid #1a1a1a', background: '#f5f5f5', color: '#1a1a1a', fontSize: 14, fontWeight: 600, outline: 'none' }}
-                  placeholder="myapp"
-                />
-              </div>
-              <div style={{ marginBottom: 28 }}>
-                <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Base Domain
-                </label>
-                <input
-                  type="text"
-                  value={config.tunnel_domain}
-                  onChange={(e) => setConfig({ ...config, tunnel_domain: e.target.value })}
-                  style={{ width: '100%', padding: '12px 14px', border: '2px solid #1a1a1a', background: '#f5f5f5', color: '#1a1a1a', fontSize: 14, fontWeight: 600, outline: 'none' }}
-                  placeholder="localto.net"
-                />
-                <p style={{ color: '#999', fontSize: 11, marginTop: 4, fontWeight: 600 }}>Result: {config.tunnel_subdomain || 'myapp'}.{config.tunnel_domain || 'localto.net'}</p>
-              </div>
-            </>
+        <div className="flex items-center gap-2">
+          {user.role === 'admin' && (
+            <Button variant="outline" size="sm" onClick={handleDelete} disabled={deleting}>
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              Delete
+            </Button>
           )}
-
-          {config.tunnel_type === 'custom-domain' && (
-            <div style={{ marginBottom: 28 }}>
-              <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Custom Domain
-              </label>
-              <input
-                type="text"
-                value={config.tunnel_domain}
-                onChange={(e) => setConfig({ ...config, tunnel_domain: e.target.value })}
-                style={{ width: '100%', padding: '12px 14px', border: '2px solid #1a1a1a', background: '#f5f5f5', color: '#1a1a1a', fontSize: 14, fontWeight: 600, outline: 'none' }}
-                placeholder="myapp.com"
-              />
-              <p style={{ color: '#999', fontSize: 11, marginTop: 4, fontWeight: 600 }}>Must be linked to your Localtonet account</p>
-            </div>
+          {canAct && (
+            <Button onClick={() => setShowDeployModal(true)} disabled={isDeploying}>
+              {isDeploying ? <><Loader2 className="w-4 h-4 animate-spin" />Deploying...</> : <><Rocket className="w-4 h-4" />Deploy Now</>}
+            </Button>
           )}
-
-          {config.tunnel_type === 'random' && <div style={{ marginBottom: 28 }} />}
-
-          {/* Environment Variables */}
-          <div style={{ marginBottom: 24 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <label style={{ color: '#666', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Environment Variables
-              </label>
-              <button
-                onClick={() => setShowRawEditor(true)}
-                style={{
-                  padding: '6px 12px',
-                  border: '2px solid #1a1a1a',
-                  background: '#ffffff',
-                  color: '#1a1a1a',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  fontSize: 11,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                }}
-              >
-                Raw Editor
-              </button>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
-              {Object.entries(envVars).map(([key, value]) => (
-                <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input
-                    value={key}
-                    readOnly
-                    style={{
-                      flex: 1, padding: '10px 12px', border: '2px solid #1a1a1a',
-                      background: '#f5f5f5', color: '#1a1a1a', fontSize: 13, fontWeight: 700,
-                      fontFamily: 'JetBrains Mono, monospace', outline: 'none',
-                    }}
-                  />
-                  <input
-                    value={value}
-                    onChange={(e) => setEnvVars({ ...envVars, [key]: e.target.value })}
-                    style={{
-                      flex: 2, padding: '10px 12px', border: '2px solid #1a1a1a',
-                      background: '#f5f5f5', color: '#1a1a1a', fontSize: 13, fontWeight: 600,
-                      fontFamily: 'JetBrains Mono, monospace', outline: 'none',
-                    }}
-                  />
-                  <button
-                    onClick={() => { const copy = { ...envVars }; delete copy[key]; setEnvVars(copy); }}
-                    style={{
-                      padding: '10px 12px', border: '2px solid #1a1a1a', background: '#ffffff',
-                      color: '#1a1a1a', fontWeight: 800, cursor: 'pointer', fontSize: 14,
-                    }}
-                  >×</button>
-                </div>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input
-                value={newKey}
-                onChange={(e) => setNewKey(e.target.value)}
-                placeholder="KEY"
-                style={{
-                  flex: 1, padding: '10px 12px', border: '2px solid #1a1a1a',
-                  background: '#ffffff', color: '#1a1a1a', fontSize: 12, fontWeight: 700,
-                  fontFamily: 'JetBrains Mono, monospace', outline: 'none',
-                }}
-              />
-              <input
-                value={newValue}
-                onChange={(e) => setNewValue(e.target.value)}
-                placeholder="value"
-                style={{
-                  flex: 2, padding: '10px 12px', border: '2px solid #1a1a1a',
-                  background: '#ffffff', color: '#1a1a1a', fontSize: 12, fontWeight: 600,
-                  fontFamily: 'JetBrains Mono, monospace', outline: 'none',
-                }}
-              />
-              <button
-                onClick={() => {
-                  if (newKey.trim()) {
-                    setEnvVars({ ...envVars, [newKey.trim()]: newValue });
-                    setNewKey('');
-                    setNewValue('');
-                  }
-                }}
-                style={{
-                  padding: '10px 14px', border: '2px solid #1a1a1a', background: '#1a1a1a',
-                  color: '#ffffff', fontWeight: 800, cursor: 'pointer', fontSize: 12,
-                  textTransform: 'uppercase',
-                }}
-              >Add</button>
-            </div>
-          </div>
-
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            style={{
-              width: '100%',
-              padding: '14px',
-              border: '3px solid #1a1a1a',
-              background: saving ? '#f5f5f5' : '#1a1a1a',
-              color: saving ? '#666' : '#ffffff',
-              fontWeight: 800,
-              cursor: saving ? 'not-allowed' : 'pointer',
-              fontSize: 13,
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              boxShadow: saving ? '2px 2px 0 #1a1a1a' : '4px 4px 0 #1a1a1a',
-              transition: 'all 0.1s ease',
-            }}
-          >
-            {saving ? 'Saving...' : 'Save Changes'}
-          </button>
-        </motion.div>
-
-        {/* Deployment History */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          style={{
-            background: '#ffffff',
-            border: '3px solid #1a1a1a',
-            padding: 28,
-            boxShadow: '4px 4px 0 #1a1a1a',
-          }}
-        >
-          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginBottom: 24, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Deployment History
-          </h2>
-
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
-              Loading...
-            </div>
-          ) : deployments.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
-              No deployments yet
-            </div>
-          ) : (
-            <div style={{ maxHeight: 420, overflowY: 'auto' }}>
-              {deployments.map((deployment) => (
-                <Link
-                  key={deployment.id}
-                  to={`/deployments/${deployment.id}`}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: 14,
-                    border: '2px solid #1a1a1a',
-                    marginBottom: 8,
-                    textDecoration: 'none',
-                    background: '#ffffff',
-                    transition: 'all 0.1s ease',
-                    boxShadow: '2px 2px 0 #1a1a1a',
-                  }}
-                  onMouseOver={(e) => {
-                    e.currentTarget.style.background = '#f5f5f5';
-                    e.currentTarget.style.boxShadow = '1px 1px 0 #1a1a1a';
-                    e.currentTarget.style.transform = 'translate(1px, 1px)';
-                  }}
-                  onMouseOut={(e) => {
-                    e.currentTarget.style.background = '#ffffff';
-                    e.currentTarget.style.boxShadow = '2px 2px 0 #1a1a1a';
-                    e.currentTarget.style.transform = 'translate(0, 0)';
-                  }}
-                >
-                  <div>
-                    <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: '#1a1a1a', fontWeight: 700 }}>
-                      {deployment.ref.substring(0, 8)}...
-                    </div>
-                    <div style={{ fontSize: 12, color: '#666', fontWeight: 600, marginTop: 4 }}>
-                      {new Date(deployment.started_at).toLocaleString()}
-                    </div>
-                  </div>
-                  <DeployBadge status={deployment.status} />
-                </Link>
-              ))}
-            </div>
-          )}
-        </motion.div>
+        </div>
       </div>
 
-      {showDeployModal && (
-        <DeployModal
-          showDeployModal={showDeployModal}
-          onClose={() => { setShowDeployModal(null); setDeployForce(false); }}
-          onDeploy={handleDeployConfirm}
-          deploying={deploying}
-          force={deployForce}
-          setForce={setDeployForce}
-        />
-      )}
-      <AnimatePresence>
-        {showRawEditor && (
-          <RawEditorModal
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Config */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Configuration</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Service Name</Label>
+              <Input value={config.service_name} onChange={(e) => setConfig({ ...config, service_name: e.target.value })} placeholder="app" />
+              <p className="text-xs text-muted-foreground">For monorepo: use different names per service</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Root Path</Label>
+              <Input value={config.root_path} onChange={(e) => setConfig({ ...config, root_path: e.target.value })} placeholder="/" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Deploy Mode</Label>
+              <Select value={config.deploy_mode} onValueChange={(v) => setConfig({ ...config, deploy_mode: v as 'release' | 'commit' })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="release">Release — deploy on new tags</SelectItem>
+                  <SelectItem value="commit">Commit — deploy on new commits</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Watch Branch</Label>
+              <Input value={config.watch_branch} onChange={(e) => setConfig({ ...config, watch_branch: e.target.value })} placeholder="main" />
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="auto-deploy" checked={config.enabled} onChange={(e) => setConfig({ ...config, enabled: e.target.checked })} className="w-4 h-4 accent-primary" />
+              <Label htmlFor="auto-deploy">Auto-deploy enabled</Label>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Container Port</Label>
+              <Input type="number" value={config.container_port} onChange={(e) => setConfig({ ...config, container_port: parseInt(e.target.value, 10) || 3000 })} min="1" max="65535" />
+              <p className="text-xs text-muted-foreground">Port your app listens on inside the container</p>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-1.5">
+              <Label>Tunnel URL Mode</Label>
+              <Select value={config.tunnel_type} onValueChange={(v) => setConfig({ ...config, tunnel_type: v as typeof config.tunnel_type })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="random">Random subdomain (auto)</SelectItem>
+                  <SelectItem value="subdomain">Custom subdomain on localto.net</SelectItem>
+                  <SelectItem value="custom-domain">Custom domain (your own)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {config.tunnel_type === 'subdomain' && (
+              <>
+                <div className="space-y-1.5">
+                  <Label>Subdomain Name</Label>
+                  <Input value={config.tunnel_subdomain} onChange={(e) => setConfig({ ...config, tunnel_subdomain: e.target.value })} placeholder="myapp" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Base Domain</Label>
+                  <Input value={config.tunnel_domain} onChange={(e) => setConfig({ ...config, tunnel_domain: e.target.value })} placeholder="localto.net" />
+                  <p className="text-xs text-muted-foreground">Result: {config.tunnel_subdomain || 'myapp'}.{config.tunnel_domain || 'localto.net'}</p>
+                </div>
+              </>
+            )}
+            {config.tunnel_type === 'custom-domain' && (
+              <div className="space-y-1.5">
+                <Label>Custom Domain</Label>
+                <Input value={config.tunnel_domain} onChange={(e) => setConfig({ ...config, tunnel_domain: e.target.value })} placeholder="myapp.com" />
+                <p className="text-xs text-muted-foreground">Must be linked to your Localtonet account</p>
+              </div>
+            )}
+
+            <Separator />
+
+            {/* Env vars */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Environment Variables</Label>
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setShowRawEditor(true)}>Raw Editor</Button>
+              </div>
+              <div className="space-y-2">
+                {Object.entries(envVars).map(([key, value]) => (
+                  <div key={key} className="flex gap-2">
+                    <Input value={key} readOnly className="flex-1 font-mono text-xs bg-muted" />
+                    <Input value={value} onChange={(e) => setEnvVars({ ...envVars, [key]: e.target.value })} className="flex-[2] font-mono text-xs" />
+                    <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0" onClick={() => { const c = { ...envVars }; delete c[key]; setEnvVars(c); }}>
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                ))}
+                <div className="flex gap-2">
+                  <Input value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="KEY" className="flex-1 font-mono text-xs" />
+                  <Input value={newValue} onChange={(e) => setNewValue(e.target.value)} placeholder="value" className="flex-[2] font-mono text-xs" />
+                  <Button size="sm" className="h-10" onClick={() => { if (newKey.trim()) { setEnvVars({ ...envVars, [newKey.trim()]: newValue }); setNewKey(''); setNewValue(''); } }}>
+                    Add
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <Button className="w-full" onClick={handleSave} disabled={saving}>
+              {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : 'Save Changes'}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Deployment History */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Deployment History</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {deploysLoading ? (
+              <div className="flex items-center justify-center py-10 text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mr-2" />Loading...</div>
+            ) : deployments.length === 0 ? (
+              <p className="text-center text-muted-foreground py-10 text-sm">No deployments yet</p>
+            ) : (
+              <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+                {deployments.map((d) => (
+                  <Link key={d.id} to={`/deployments/${d.id}`}
+                    className="flex items-center justify-between p-3 rounded-md border hover:bg-muted/50 transition-colors no-underline">
+                    <div>
+                      <p className="font-mono text-xs font-semibold text-foreground">{d.ref.substring(0, 12)}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{new Date(d.started_at).toLocaleString()}</p>
+                    </div>
+                    <DeployBadge status={d.status} />
+                  </Link>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Deploy modal */}
+      <Dialog open={showDeployModal} onOpenChange={setShowDeployModal}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Deploy {repo.full_name}?</DialogTitle></DialogHeader>
+          <div className="flex items-center gap-2">
+            <input type="checkbox" id="force" checked={deployForce} onChange={(e) => setDeployForce(e.target.checked)} className="w-4 h-4 accent-primary" />
+            <Label htmlFor="force">Force deploy (skip update check)</Label>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowDeployModal(false); setDeployForce(false); }}>Cancel</Button>
+            <Button onClick={handleDeployConfirm} disabled={deploying}>
+              {deploying ? <><Loader2 className="w-4 h-4 animate-spin" />Deploying...</> : <><Rocket className="w-4 h-4" />Deploy</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Raw env editor */}
+      <Dialog open={showRawEditor} onOpenChange={setShowRawEditor}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Raw Env Editor</DialogTitle></DialogHeader>
+          <RawEditorContent
             envVars={envVars}
+            onUpdate={(v) => { setEnvVars(v); setShowRawEditor(false); }}
             onClose={() => setShowRawEditor(false)}
-            onUpdate={(newVars) => {
-              setEnvVars(newVars);
-              setShowRawEditor(false);
-            }}
           />
-        )}
-      </AnimatePresence>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => void }) {
+function RawEditorContent({ envVars, onUpdate, onClose }: { envVars: Record<string, string>; onUpdate: (v: Record<string, string>) => void; onClose: () => void }) {
+  const [raw, setRaw] = useState(() => Object.entries(envVars).map(([k, v]) => `${k}=${v}`).join('\n'));
+
+  function handleSave() {
+    const parsed: Record<string, string> = {};
+    raw.split('\n').forEach((line) => {
+      const eqIdx = line.indexOf('=');
+      if (eqIdx > 0) {
+        const k = line.substring(0, eqIdx).trim();
+        const v = line.substring(eqIdx + 1);
+        if (k) parsed[k] = v;
+      }
+    });
+    onUpdate(parsed);
+  }
+
+  return (
+    <>
+      <Textarea value={raw} onChange={(e) => setRaw(e.target.value)} className="font-mono text-xs min-h-[200px]" placeholder="KEY=value&#10;ANOTHER_KEY=another_value" />
+      <p className="text-xs text-muted-foreground">One variable per line: KEY=value</p>
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button onClick={handleSave}>Apply</Button>
+      </DialogFooter>
+    </>
+  );
+}
+
+function AddRepoModal({ projects, onClose, onAdd }: { projects: Project[]; onClose: () => void; onAdd: () => void }) {
   const [search, setSearch] = useState('');
   const [results, setResults] = useState<any[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<any>(null);
   const [config, setConfig] = useState({
-    project_id: 0,
+    project_id: projects[0]?.id ?? 0,
     service_name: 'app',
     root_path: '/',
     deploy_mode: 'release' as 'release' | 'commit',
@@ -1150,1274 +516,94 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
   const [adding, setAdding] = useState(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (search.length >= 2) {
-        searchRepos();
-      }
-    }, 300);
-    return () => clearTimeout(timer);
+    const t = setTimeout(() => { if (search.length >= 2) searchRepos(); }, 300);
+    return () => clearTimeout(t);
   }, [search]);
-
-  useEffect(() => {
-    loadProjects();
-  }, []);
-
-  async function loadProjects() {
-    try {
-      const response = await api.get('/api/projects');
-      if (response.ok) {
-        const data = await response.json();
-        const loaded = data.projects || [];
-        setProjects(loaded);
-        if (loaded[0]) {
-          setConfig((prev) => ({ ...prev, project_id: loaded[0].id }));
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load projects:', error);
-    }
-  }
 
   async function searchRepos() {
     setLoading(true);
     try {
-      const response = await api.get(`/api/repos/search?q=${encodeURIComponent(search)}`);
-      if (response.ok) {
-        const data = await response.json();
-        setResults(data.repos);
-      }
-    } catch (error) {
-      console.error('Search failed:', error);
-    } finally {
-      setLoading(false);
-    }
+      const r = await api.get(`/api/repos/search?q=${encodeURIComponent(search)}`);
+      if (r.ok) { const d = await r.json(); setResults(d.repos); }
+    } finally { setLoading(false); }
   }
 
   async function handleAdd() {
     if (!selected || !config.project_id) return;
     setAdding(true);
     try {
-      await api.post('/api/repos', {
-        owner: selected.owner,
-        name: selected.name,
-        ...config,
-      });
+      await api.post('/api/repos', { owner: selected.owner, name: selected.name, ...config });
       onAdd();
-      onClose();
-    } catch (error) {
-      console.error('Add failed:', error);
-    } finally {
-      setAdding(false);
-    }
+    } finally { setAdding(false); }
   }
 
-  // Common input style
-  const inputStyle: React.CSSProperties = {
-    width: '100%',
-    padding: '12px 14px',
-    border: '2px solid #1a1a1a',
-    background: '#f5f5f5',
-    color: '#1a1a1a',
-    fontSize: 14,
-    fontWeight: 600,
-    outline: 'none',
-    fontFamily: 'inherit',
-  };
-
-  const labelStyle: React.CSSProperties = {
-    display: 'block',
-    color: '#666',
-    fontSize: 11,
-    marginBottom: 8,
-    fontWeight: 800,
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px',
-  };
-
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0, 0, 0, 0.6)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000,
-      }}
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.9, opacity: 0 }}
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: '#ffffff',
-          border: '4px solid #1a1a1a',
-          padding: 32,
-          width: 520,
-          maxWidth: '90%',
-          maxHeight: '85vh',
-          overflow: 'auto',
-          boxShadow: '8px 8px 0 #1a1a1a',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
-          <h2 style={{ fontSize: 22, fontWeight: 800, color: '#1a1a1a', textTransform: 'uppercase', letterSpacing: '-0.5px' }}>
-            Add Repository
-          </h2>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'none',
-              border: '2px solid #1a1a1a',
-              color: '#1a1a1a',
-              cursor: 'pointer',
-              fontWeight: 800,
-              fontSize: 16,
-              width: 36,
-              height: 36,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            ×
-          </button>
-        </div>
-
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Add Repository</DialogTitle></DialogHeader>
         {!selected ? (
-          <>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search GitHub repositories..."
-              autoFocus
-              style={{ ...inputStyle, marginBottom: 20 }}
-            />
-
-            {loading ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
-                Searching...
-              </div>
-            ) : results.length === 0 && search.length >= 2 ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
-                No repositories found
-              </div>
-            ) : (
-              <div style={{ maxHeight: 300, overflowY: 'auto' }}>
-                {results.map((repo) => (
-                  <div
-                    key={repo.id}
-                    onClick={() => setSelected(repo)}
-                    style={{
-                      padding: 14,
-                      marginBottom: 8,
-                      cursor: 'pointer',
-                      border: '2px solid #1a1a1a',
-                      background: '#ffffff',
-                      boxShadow: '2px 2px 0 #1a1a1a',
-                      transition: 'all 0.1s ease',
-                    }}
-                    onMouseOver={(e) => {
-                      e.currentTarget.style.background = '#1a1a1a';
-                      (e.currentTarget.querySelector('span') as HTMLElement).style.color = '#ffffff';
-                    }}
-                    onMouseOut={(e) => {
-                      e.currentTarget.style.background = '#ffffff';
-                      (e.currentTarget.querySelector('span') as HTMLElement).style.color = '#1a1a1a';
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: '#1a1a1a', fontWeight: 700, transition: 'color 0.1s ease' }}>{repo.full_name}</span>
-                      {repo.private && (
-                        <span style={{
-                          fontSize: 10,
-                          padding: '3px 8px',
-                          border: '2px solid #1a1a1a',
-                          color: '#1a1a1a',
-                          fontWeight: 800,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.5px',
-                        }}>
-                          Private
-                        </span>
-                      )}
+          <div className="space-y-3">
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search GitHub repositories..." autoFocus />
+            <div className="max-h-72 overflow-y-auto space-y-2">
+              {loading ? <p className="text-sm text-muted-foreground text-center py-4">Searching...</p>
+                : search.length >= 2 && results.length === 0 ? <p className="text-sm text-muted-foreground text-center py-4">No repositories found</p>
+                : results.map((repo) => (
+                  <button key={repo.id} onClick={() => setSelected(repo)} className="w-full text-left p-3 rounded-md border hover:bg-muted/50 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium text-sm">{repo.full_name}</p>
+                      {repo.private && <Badge variant="outline" className="text-xs">Private</Badge>}
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
+                  </button>
+                ))
+              }
+            </div>
+          </div>
         ) : (
-          <>
-            <div style={{
-              padding: 16,
-              border: '2px solid #1a1a1a',
-              marginBottom: 24,
-              background: '#f5f5f5',
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#1a1a1a', fontWeight: 800, fontSize: 15 }}>{selected.full_name}</span>
-                <button
-                  onClick={() => setSelected(null)}
-                  style={{
-                    background: 'none',
-                    border: '2px solid #1a1a1a',
-                    color: '#1a1a1a',
-                    cursor: 'pointer',
-                    fontSize: 11,
-                    fontWeight: 800,
-                    padding: '4px 10px',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                  }}
-                >
-                  Change
-                </button>
+          <div className="space-y-4">
+            <div className="p-3 rounded-md border bg-muted/50 flex items-center justify-between">
+              <p className="font-medium text-sm">{selected.full_name}</p>
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setSelected(null)}>Change</Button>
+            </div>
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label>Project</Label>
+                <Select value={String(config.project_id)} onValueChange={(v) => setConfig({ ...config, project_id: parseInt(v, 10) })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {projects.map((p) => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Service Name</Label>
+                <Input value={config.service_name} onChange={(e) => setConfig({ ...config, service_name: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Root Path</Label>
+                <Input value={config.root_path} onChange={(e) => setConfig({ ...config, root_path: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Deploy Mode</Label>
+                <Select value={config.deploy_mode} onValueChange={(v) => setConfig({ ...config, deploy_mode: v as 'release' | 'commit' })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="release">Release</SelectItem>
+                    <SelectItem value="commit">Commit</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Watch Branch</Label>
+                <Input value={config.watch_branch} onChange={(e) => setConfig({ ...config, watch_branch: e.target.value })} />
               </div>
             </div>
-
-            <div style={{ marginBottom: 20 }}>
-              <label style={labelStyle}>Project</label>
-              <select
-                value={config.project_id}
-                onChange={(e) => setConfig({ ...config, project_id: parseInt(e.target.value, 10) })}
-                style={{ ...inputStyle, cursor: 'pointer' }}
-              >
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>{project.name}</option>
-                ))}
-              </select>
-              <p style={{ color: '#999', fontSize: 11, marginTop: 4, fontWeight: 600 }}>
-                Services must belong to a project
-              </p>
-            </div>
-
-            <div style={{ marginBottom: 20 }}>
-              <label style={labelStyle}>Service Name</label>
-              <input
-                type="text"
-                value={config.service_name}
-                onChange={(e) => setConfig({ ...config, service_name: e.target.value })}
-                style={inputStyle}
-                placeholder="app"
-              />
-              <p style={{ color: '#999', fontSize: 11, marginTop: 4, fontWeight: 600 }}>
-                For monorepo: use different names (frontend, backend, api, web)
-              </p>
-            </div>
-
-            <div style={{ marginBottom: 20 }}>
-              <label style={labelStyle}>Root Path</label>
-              <input
-                type="text"
-                value={config.root_path}
-                onChange={(e) => setConfig({ ...config, root_path: e.target.value })}
-                style={inputStyle}
-                placeholder="/"
-              />
-            </div>
-
-            <div style={{ marginBottom: 20 }}>
-              <label style={labelStyle}>Deploy Mode</label>
-              <select
-                value={config.deploy_mode}
-                onChange={(e) => setConfig({ ...config, deploy_mode: e.target.value as 'release' | 'commit' })}
-                style={{ ...inputStyle, cursor: 'pointer' }}
-              >
-                <option value="release">Release — deploy on new tags</option>
-                <option value="commit">Commit — deploy on new commits</option>
-              </select>
-            </div>
-
-            <div style={{ marginBottom: 28 }}>
-              <label style={labelStyle}>Watch Branch</label>
-              <input
-                type="text"
-                value={config.watch_branch}
-                onChange={(e) => setConfig({ ...config, watch_branch: e.target.value })}
-                style={inputStyle}
-                placeholder="main"
-              />
-            </div>
-
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button
-                onClick={onClose}
-                style={{
-                  flex: 1,
-                  padding: '14px',
-                  border: '3px solid #1a1a1a',
-                  background: '#ffffff',
-                  color: '#1a1a1a',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  fontSize: 13,
-                  boxShadow: '3px 3px 0 #1a1a1a',
-                  transition: 'all 0.1s ease',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAdd}
-                disabled={adding}
-                style={{
-                  flex: 1,
-                  padding: '14px',
-                  border: '3px solid #1a1a1a',
-                  background: adding ? '#f5f5f5' : '#1a1a1a',
-                  color: adding ? '#666' : '#ffffff',
-                  fontWeight: 800,
-                  cursor: adding ? 'not-allowed' : 'pointer',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  fontSize: 13,
-                  boxShadow: adding ? '1px 1px 0 #1a1a1a' : '3px 3px 0 #1a1a1a',
-                  transition: 'all 0.1s ease',
-                }}
-              >
-                {adding ? 'Adding...' : 'Add Repository'}
-              </button>
-            </div>
-          </>
-        )}
-      </motion.div>
-    </motion.div>
-  );
-}
-
-void AddRepoModal;
-
-function QuickAddServiceModal({
-  projects,
-  onClose,
-  onAdded,
-}: {
-  projects: Project[];
-  onClose: () => void;
-  onAdded: () => void;
-}) {
-  const [step, setStep] = useState<'select-project' | 'search-repo'>('select-project');
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [search, setSearch] = useState('');
-  const [results, setResults] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [selectedRepo, setSelectedRepo] = useState<any>(null);
-  const [config, setConfig] = useState({
-    service_name: 'app',
-    root_path: '/',
-    deploy_mode: 'release' as 'release' | 'commit',
-    watch_branch: 'main',
-  });
-  const [adding, setAdding] = useState(false);
-  const [existingRepos, setExistingRepos] = useState<Repository[]>([]);
-
-  // Load existing repos to avoid duplicates
-  useEffect(() => {
-    async function loadExistingRepos() {
-      try {
-        const response = await api.get('/api/repos');
-        if (response.ok) {
-          const data = await response.json();
-          setExistingRepos(data.repos || []);
-        }
-      } catch (error) {
-        console.error('Failed to load existing repos:', error);
-      }
-    }
-    loadExistingRepos();
-  }, []);
-
-  async function searchRepos() {
-    setLoading(true);
-    try {
-      const response = await api.get(`/api/repos/search?q=${encodeURIComponent(search)}`);
-      if (response.ok) {
-        const data = await response.json();
-        setResults(data.repos || []);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (search.length >= 2 && step === 'search-repo') {
-        searchRepos();
-      }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [search, step]);
-
-  async function handleAdd() {
-    if (!selectedRepo || !selectedProject) return;
-    setAdding(true);
-    try {
-      await api.post('/api/repos', {
-        owner: selectedRepo.owner,
-        name: selectedRepo.name,
-        project_id: selectedProject.id,
-        ...config,
-      });
-      onAdded();
-    } finally {
-      setAdding(false);
-    }
-  }
-
-  const inputStyle: React.CSSProperties = {
-    width: '100%',
-    padding: '12px 14px',
-    border: '2px solid #1a1a1a',
-    background: '#f5f5f5',
-    color: '#1a1a1a',
-    fontSize: 14,
-    fontWeight: 600,
-    outline: 'none',
-    fontFamily: 'inherit',
-  };
-
-  const modalBackdrop: React.CSSProperties = {
-    position: 'fixed',
-    inset: 0,
-    background: 'rgba(0, 0, 0, 0.6)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1000,
-  };
-
-  const modalStyle: React.CSSProperties = {
-    background: '#ffffff',
-    border: '4px solid #1a1a1a',
-    padding: 32,
-    maxWidth: '90%',
-    maxHeight: '85vh',
-    overflow: 'auto',
-    boxShadow: '8px 8px 0 #1a1a1a',
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      style={modalBackdrop}
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.9, opacity: 0 }}
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          ...modalStyle,
-          width: 560,
-        }}
-      >
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <div>
-            <h2 style={{ marginTop: 0, fontSize: 22, fontWeight: 800, textTransform: 'uppercase' }}>
-              Add Service
-            </h2>
-            <p style={{ color: '#666', fontSize: 13, fontWeight: 600, margin: 0 }}>
-              Step {step === 'select-project' ? '1' : '2'} of 2
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'none',
-              border: '2px solid #1a1a1a',
-              color: '#1a1a1a',
-              cursor: 'pointer',
-              fontWeight: 800,
-              fontSize: 16,
-              width: 32,
-              height: 32,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            ×
-          </button>
-        </div>
-
-        {/* Step 1: Select Project */}
-        {step === 'select-project' && (
-          <>
-            <p style={{ color: '#666', fontSize: 13, fontWeight: 600, marginBottom: 20 }}>
-              Select a project to add this service to
-            </p>
-            <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-              {projects.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
-                  No projects found. Create a project first.
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gap: 12 }}>
-                  {projects.map((project) => (
-                    <button
-                      key={project.id}
-                      onClick={() => {
-                        setSelectedProject(project);
-                        setStep('search-repo');
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: 16,
-                        border: '2px solid #1a1a1a',
-                        background: '#ffffff',
-                        color: '#1a1a1a',
-                        textAlign: 'left',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        boxShadow: '2px 2px 0 #1a1a1a',
-                        transition: 'all 0.1s ease',
-                      }}
-                      onMouseOver={(e) => {
-                        e.currentTarget.style.background = '#f5f5f5';
-                        e.currentTarget.style.transform = 'translate(2px, 2px)';
-                        e.currentTarget.style.boxShadow = '1px 1px 0 #1a1a1a';
-                      }}
-                      onMouseOut={(e) => {
-                        e.currentTarget.style.background = '#ffffff';
-                        e.currentTarget.style.transform = 'translate(0, 0)';
-                        e.currentTarget.style.boxShadow = '2px 2px 0 #1a1a1a';
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <div style={{ fontSize: 15, marginBottom: 4 }}>{project.name}</div>
-                          <div style={{ fontSize: 12, color: '#666', fontWeight: 600 }}>
-                            {project.description || 'No description'}
-                          </div>
-                        </div>
-                        <span style={{
-                          fontSize: 11,
-                          padding: '4px 10px',
-                          border: '2px solid #1a1a1a',
-                          background: '#f5f5f5',
-                          fontWeight: 800,
-                          textTransform: 'uppercase',
-                        }}>
-                          {existingRepos.filter((r: any) => r.project_id === project.id).length} services
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </>
-        )}
-
-        {/* Step 2: Search Repository */}
-        {step === 'search-repo' && (
-          <>
-            <button
-              onClick={() => setStep('select-project')}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#666',
-                fontWeight: 700,
-                cursor: 'pointer',
-                padding: 0,
-                marginBottom: 16,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                fontSize: 13,
-              }}
-            >
-              ← Back to projects
-            </button>
-
-            <div style={{
-              padding: 12,
-              border: '2px solid #1a1a1a',
-              background: '#f5f5f5',
-              marginBottom: 20,
-            }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a1a' }}>
-                Project: {selectedProject?.name}
-              </div>
-            </div>
-
-            {!selectedRepo ? (
-              <>
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search GitHub repositories..."
-                  autoFocus
-                  style={inputStyle}
-                />
-
-                {loading ? (
-                  <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
-                    Searching...
-                  </div>
-                ) : (
-                  <div style={{ maxHeight: 300, overflowY: 'auto' }}>
-                    {(() => {
-                      // Filter out repos that already exist in this project
-                      const existingInProject = existingRepos.filter(
-                        r => r.project_id === selectedProject?.id
-                      );
-                      const availableResults = results.filter(
-                        repo => !existingInProject.find(
-                          existing => existing.full_name === repo.full_name
-                        )
-                      );
-
-                      return availableResults.length === 0 && search.length >= 2 ? (
-                        <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
-                          {results.length === 0
-                            ? 'No repositories found'
-                            : 'All available repositories already in this project'}
-                        </div>
-                      ) : (
-                        availableResults.map((repo) => (
-                          <div
-                            key={repo.id}
-                            onClick={() => setSelectedRepo(repo)}
-                            style={{
-                              padding: 14,
-                              marginBottom: 10,
-                              cursor: 'pointer',
-                              border: '2px solid #1a1a1a',
-                              background: '#ffffff',
-                              boxShadow: '2px 2px 0 #1a1a1a',
-                              transition: 'all 0.1s ease',
-                            }}
-                            onMouseOver={(e) => {
-                              e.currentTarget.style.background = '#1a1a1a';
-                              e.currentTarget.style.color = '#ffffff';
-                            }}
-                            onMouseOut={(e) => {
-                              e.currentTarget.style.background = '#ffffff';
-                              e.currentTarget.style.color = '#1a1a1a';
-                            }}
-                          >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span style={{ fontWeight: 800 }}>{repo.full_name}</span>
-                              {repo.private && (
-                                <span style={{
-                                  fontSize: 10,
-                                  padding: '3px 8px',
-                                  border: '2px solid #1a1a1a',
-                                  fontWeight: 800,
-                                  textTransform: 'uppercase',
-                                  letterSpacing: '0.5px',
-                                }}>
-                                  Private
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))
-                      );
-                    })()}
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <div style={{
-                  padding: 12,
-                  border: '2px solid #1a1a1a',
-                  marginBottom: 20,
-                  background: '#f5f5f5',
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 800 }}>{selectedRepo.full_name}</span>
-                    <button
-                      onClick={() => setSelectedRepo(null)}
-                      style={{
-                        background: 'none',
-                        border: '2px solid #1a1a1a',
-                        color: '#1a1a1a',
-                        cursor: 'pointer',
-                        fontSize: 11,
-                        fontWeight: 800,
-                        padding: '4px 10px',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px',
-                      }}
-                    >
-                      Change
-                    </button>
-                  </div>
-                </div>
-
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{
-                    display: 'block',
-                    color: '#666',
-                    fontSize: 11,
-                    marginBottom: 8,
-                    fontWeight: 800,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                  }}>
-                    Service Name
-                  </label>
-                  <input
-                    type="text"
-                    value={config.service_name}
-                    onChange={(e) => setConfig({ ...config, service_name: e.target.value })}
-                    placeholder="app"
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{
-                    display: 'block',
-                    color: '#666',
-                    fontSize: 11,
-                    marginBottom: 8,
-                    fontWeight: 800,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                  }}>
-                    Root Path
-                  </label>
-                  <input
-                    type="text"
-                    value={config.root_path}
-                    onChange={(e) => setConfig({ ...config, root_path: e.target.value })}
-                    placeholder="/"
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{
-                    display: 'block',
-                    color: '#666',
-                    fontSize: 11,
-                    marginBottom: 8,
-                    fontWeight: 800,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                  }}>
-                    Deploy Mode
-                  </label>
-                  <select
-                    value={config.deploy_mode}
-                    onChange={(e) => setConfig({ ...config, deploy_mode: e.target.value as 'release' | 'commit' })}
-                    style={{ ...inputStyle, cursor: 'pointer' }}
-                  >
-                    <option value="release">Release — deploy on new tags</option>
-                    <option value="commit">Commit — deploy on new commits</option>
-                  </select>
-                </div>
-
-                <div style={{ marginBottom: 24 }}>
-                  <label style={{
-                    display: 'block',
-                    color: '#666',
-                    fontSize: 11,
-                    marginBottom: 8,
-                    fontWeight: 800,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                  }}>
-                    Watch Branch
-                  </label>
-                  <input
-                    type="text"
-                    value={config.watch_branch}
-                    onChange={(e) => setConfig({ ...config, watch_branch: e.target.value })}
-                    placeholder="main"
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div style={{ display: 'flex', gap: 12 }}>
-                  <button
-                    onClick={onClose}
-                    style={{
-                      flex: 1,
-                      padding: '14px',
-                      border: '3px solid #1a1a1a',
-                      background: '#ffffff',
-                      color: '#1a1a1a',
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
-                      fontSize: 13,
-                      boxShadow: '3px 3px 0 #1a1a1a',
-                      transition: 'all 0.1s ease',
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleAdd}
-                    disabled={adding}
-                    style={{
-                      flex: 1,
-                      padding: '14px',
-                      border: '3px solid #1a1a1a',
-                      background: adding ? '#f5f5f5' : '#1a1a1a',
-                      color: adding ? '#666' : '#ffffff',
-                      fontWeight: 800,
-                      cursor: adding ? 'not-allowed' : 'pointer',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
-                      fontSize: 13,
-                      boxShadow: adding ? '1px 1px 0 #1a1a1a' : '3px 3px 0 #1a1a1a',
-                      transition: 'all 0.1s ease',
-                    }}
-                  >
-                    {adding ? 'Adding...' : 'Add Service'}
-                  </button>
-                </div>
-              </>
-            )}
-          </>
-        )}
-      </motion.div>
-    </motion.div>
-  );
-}
-
-function RawEditorModal({
-  envVars,
-  onClose,
-  onUpdate,
-}: {
-  envVars: Record<string, string>;
-  onClose: () => void;
-  onUpdate: (vars: Record<string, string>) => void;
-}) {
-  const [mode, setMode] = useState<'env' | 'json'>('env');
-  const [rawText, setRawText] = useState('');
-  const [error, setError] = useState('');
-  const toast = useToast();
-
-  // Initialize rawText based on current mode
-  useState(() => {
-    updateRawText(mode);
-  });
-
-  function updateRawText(newMode: 'env' | 'json') {
-    if (newMode === 'env') {
-      const envText = Object.entries(envVars)
-        .map(([key, value]) => {
-          // Quote value if it contains spaces or special chars
-          const needsQuotes = /[\s#"']/.test(value);
-          return needsQuotes ? `${key}="${value}"` : `${key}=${value}`;
-        })
-        .join('\n');
-      setRawText(envText);
-    } else {
-      setRawText(JSON.stringify(envVars, null, 2));
-    }
-  }
-
-  function handleModeChange(newMode: 'env' | 'json') {
-    setMode(newMode);
-    updateRawText(newMode);
-    setError('');
-  }
-
-  function parseEnvFormat(text: string): Record<string, string> {
-    const result: Record<string, string> = {};
-    const lines = text.split('\n');
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-
-      const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
-      if (!match) {
-        throw new Error(`Invalid ENV format at line: ${line}`);
-      }
-
-      const key = match[1];
-      let value = match[2];
-
-      // Remove quotes if present
-      if ((value.startsWith('"') && value.endsWith('"')) ||
-          (value.startsWith("'") && value.endsWith("'"))) {
-        value = value.slice(1, -1);
-      }
-
-      result[key] = value;
-    }
-
-    return result;
-  }
-
-  function handleUpdate() {
-    setError('');
-    try {
-      let parsed: Record<string, string>;
-
-      if (mode === 'env') {
-        parsed = parseEnvFormat(rawText);
-      } else {
-        parsed = JSON.parse(rawText);
-        // Validate it's a flat object with string values
-        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-          throw new Error('JSON must be an object');
-        }
-        for (const [key, value] of Object.entries(parsed)) {
-          if (typeof value !== 'string') {
-            throw new Error(`Value for "${key}" must be a string`);
-          }
-        }
-      }
-
-      onUpdate(parsed);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Invalid format');
-    }
-  }
-
-  function handleCopy() {
-    navigator.clipboard.writeText(rawText);
-    toast(`Copied ${mode.toUpperCase()} to clipboard`, 'success');
-  }
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0, 0, 0, 0.6)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000,
-      }}
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.9, opacity: 0 }}
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: '#ffffff',
-          border: '4px solid #1a1a1a',
-          padding: 32,
-          width: 700,
-          maxWidth: '90%',
-          maxHeight: '85vh',
-          overflow: 'auto',
-          boxShadow: '8px 8px 0 #1a1a1a',
-        }}
-      >
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: '#1a1a1a', textTransform: 'uppercase' }}>
-            Raw Editor
-          </h2>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'none',
-              border: '2px solid #1a1a1a',
-              color: '#1a1a1a',
-              cursor: 'pointer',
-              fontWeight: 800,
-              fontSize: 20,
-              width: 32,
-              height: 32,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            ×
-          </button>
-        </div>
-
-        {/* Tabs */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <button
-            onClick={() => handleModeChange('env')}
-            style={{
-              padding: '10px 20px',
-              border: '2px solid #1a1a1a',
-              background: mode === 'env' ? '#1a1a1a' : '#ffffff',
-              color: mode === 'env' ? '#ffffff' : '#1a1a1a',
-              fontWeight: 800,
-              cursor: 'pointer',
-              fontSize: 12,
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-            }}
-          >
-            ENV
-          </button>
-          <button
-            onClick={() => handleModeChange('json')}
-            style={{
-              padding: '10px 20px',
-              border: '2px solid #1a1a1a',
-              background: mode === 'json' ? '#1a1a1a' : '#ffffff',
-              color: mode === 'json' ? '#ffffff' : '#1a1a1a',
-              fontWeight: 800,
-              cursor: 'pointer',
-              fontSize: 12,
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-            }}
-          >
-            JSON
-          </button>
-        </div>
-
-        {/* Textarea */}
-        <textarea
-          value={rawText}
-          onChange={(e) => setRawText(e.target.value)}
-          spellCheck={false}
-          style={{
-            width: '100%',
-            height: 400,
-            padding: 16,
-            border: '2px solid #1a1a1a',
-            background: '#f5f5f5',
-            color: '#1a1a1a',
-            fontSize: 13,
-            fontWeight: 600,
-            fontFamily: 'JetBrains Mono, monospace',
-            outline: 'none',
-            resize: 'vertical',
-            marginBottom: 12,
-          }}
-          placeholder={mode === 'env' ? 'KEY=value\nANOTHER_KEY="value with spaces"' : '{\n  "KEY": "value",\n  "ANOTHER_KEY": "value"\n}'}
-        />
-
-        {/* Error */}
-        {error && (
-          <div style={{
-            padding: 12,
-            border: '2px solid #ff0000',
-            background: '#fff5f5',
-            color: '#ff0000',
-            fontWeight: 700,
-            fontSize: 12,
-            marginBottom: 16,
-          }}>
-            {error}
+            <DialogFooter>
+              <Button variant="outline" onClick={onClose}>Cancel</Button>
+              <Button onClick={handleAdd} disabled={adding || !config.project_id}>{adding ? 'Adding...' : 'Add Service'}</Button>
+            </DialogFooter>
           </div>
         )}
-
-        {/* Actions */}
-        <div style={{ display: 'flex', gap: 12 }}>
-          <button
-            onClick={handleCopy}
-            style={{
-              padding: '12px 20px',
-              border: '2px solid #1a1a1a',
-              background: '#ffffff',
-              color: '#1a1a1a',
-              fontWeight: 800,
-              cursor: 'pointer',
-              fontSize: 12,
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-            }}
-          >
-            Copy {mode.toUpperCase()}
-          </button>
-          <button
-            onClick={onClose}
-            style={{
-              flex: 1,
-              padding: '12px',
-              border: '2px solid #1a1a1a',
-              background: '#ffffff',
-              color: '#1a1a1a',
-              fontWeight: 800,
-              cursor: 'pointer',
-              fontSize: 12,
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleUpdate}
-            style={{
-              flex: 1,
-              padding: '12px',
-              border: '2px solid #1a1a1a',
-              background: '#1a1a1a',
-              color: '#ffffff',
-              fontWeight: 800,
-              cursor: 'pointer',
-              fontSize: 12,
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              boxShadow: '3px 3px 0 #1a1a1a',
-            }}
-          >
-            Update Variables
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-function DeployModal({
-  showDeployModal,
-  onClose,
-  onDeploy,
-  deploying,
-  force,
-  setForce,
-}: {
-  showDeployModal: { repoId: number; repoName: string } | null;
-  onClose: () => void;
-  onDeploy: () => void;
-  deploying?: boolean;
-  force?: boolean;
-  setForce?: (v: boolean) => void;
-}) {
-  if (!showDeployModal) return null;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0, 0, 0, 0.6)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000,
-      }}
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.9, opacity: 0 }}
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: '#ffffff',
-          border: '4px solid #1a1a1a',
-          padding: 32,
-          width: 480,
-          maxWidth: '90%',
-          boxShadow: '8px 8px 0 #1a1a1a',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: '#1a1a1a', textTransform: 'uppercase' }}>
-            Deploy {showDeployModal.repoName}
-          </h2>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'none',
-              border: '2px solid #1a1a1a',
-              color: '#1a1a1a',
-              cursor: 'pointer',
-              fontWeight: 800,
-              fontSize: 20,
-              width: 32,
-              height: 32,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            ×
-          </button>
-        </div>
-
-        <p style={{ color: '#666', fontSize: 13, fontWeight: 600, marginBottom: 24, lineHeight: 1.6 }}>
-          Deploy the latest {showDeployModal.repoName} using the configured environment variables from repository settings.
-        </p>
-
-        {setForce && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={force ?? false}
-              onChange={(e) => setForce(e.target.checked)}
-              style={{ width: 16, height: 16, cursor: 'pointer' }}
-            />
-            <span style={{ fontSize: 11, fontWeight: 700, color: force ? '#c0392b' : '#666', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Force deploy (bypass active deployment lock)
-            </span>
-          </label>
-        )}
-
-        <div style={{ display: 'flex', gap: 12 }}>
-          <button
-            onClick={onClose}
-            style={{
-              flex: 1,
-              padding: '14px',
-              border: '3px solid #1a1a1a',
-              background: '#ffffff',
-              color: '#1a1a1a',
-              fontWeight: 800,
-              cursor: 'pointer',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              fontSize: 13,
-              boxShadow: '3px 3px 0 #1a1a1a',
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onDeploy}
-            disabled={deploying}
-            style={{
-              flex: 1,
-              padding: '14px',
-              border: `3px solid ${force ? '#c0392b' : '#1a1a1a'}`,
-              background: deploying ? '#f5f5f5' : force ? '#c0392b' : '#1a1a1a',
-              color: deploying ? '#666' : '#ffffff',
-              fontWeight: 800,
-              cursor: deploying ? 'not-allowed' : 'pointer',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              fontSize: 13,
-              boxShadow: deploying ? '1px 1px 0 #1a1a1a' : `3px 3px 0 ${force ? '#c0392b' : '#1a1a1a'}`,
-              transition: 'all 0.1s ease',
-            }}
-          >
-            {deploying ? 'Deploying...' : force ? 'Force Deploy' : 'Deploy'}
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
+      </DialogContent>
+    </Dialog>
   );
 }

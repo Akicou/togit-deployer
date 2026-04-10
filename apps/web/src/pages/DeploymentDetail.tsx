@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { api } from '../lib/api';
 import { useWebSocket } from '../hooks/useWebSocket';
 import LogViewer from '../components/LogViewer';
 import DeployBadge from '../components/DeployBadge';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Button } from '../components/ui/button';
+import { Badge } from '../components/ui/badge';
+import { Alert, AlertDescription } from '../components/ui/alert';
+import { ArrowLeft, ExternalLink, Loader2, Radio } from 'lucide-react';
 import type { Deployment, Log } from '../types';
 
 export default function DeploymentDetail({ user }: { user: any }) {
@@ -19,353 +23,152 @@ export default function DeploymentDetail({ user }: { user: any }) {
   const { logs: liveLogs, connected } = useWebSocket(parseInt(id || '0', 10));
 
   useEffect(() => {
-    if (id) {
-      loadDeployment();
-      loadLogs();
-    }
+    if (id) { loadDeployment(); loadLogs(); }
   }, [id]);
 
   useEffect(() => {
-    if (liveLogs.length > 0) {
-      setLogs(liveLogs);
-    }
+    if (liveLogs.length > 0) setLogs(liveLogs);
   }, [liveLogs]);
 
   async function loadDeployment() {
     try {
-      const response = await api.get(`/api/deployments/${id}`);
-      if (response.ok) {
-        const data = await response.json();
-        setDeployment(data.deployment);
-      }
-    } catch (error) {
-      console.error('Failed to load deployment:', error);
-    } finally {
-      setLoading(false);
-    }
+      const r = await api.get(`/api/deployments/${id}`);
+      if (r.ok) { const d = await r.json(); setDeployment(d.deployment); }
+    } finally { setLoading(false); }
   }
 
   async function handleDelete() {
     if (!deployment) return;
     const isRunning = deployment.status === 'running';
-    const msg = isRunning
-      ? 'Roll back this deployment? The previous version will be redeployed.'
-      : 'Delete this deployment record?';
+    const msg = isRunning ? 'Roll back this deployment? The previous version will be redeployed.' : 'Delete this deployment record?';
     if (!confirm(msg)) return;
     setDeleting(true);
     try {
-      const response = await api.delete(`/api/deployments/${id}`);
-      if (response.ok) {
-        navigate(`/repositories/${deployment.repo_id}`);
-      }
-    } catch (error) {
-      console.error('Failed to delete deployment:', error);
-    } finally {
-      setDeleting(false);
-    }
+      const r = await api.delete(`/api/deployments/${id}`);
+      if (r.ok) navigate(`/repositories/${deployment.repo_id}`);
+    } finally { setDeleting(false); }
   }
 
   async function loadLogs() {
     try {
-      const response = await api.get(`/api/deployments/${id}/logs?limit=500`);
-      if (response.ok) {
-        const data = await response.json();
-        setLogs(data.logs);
-      }
-    } catch (error) {
-      console.error('Failed to load logs:', error);
-    } finally {
-      setLogsLoading(false);
-    }
+      const r = await api.get(`/api/deployments/${id}/logs?limit=500`);
+      if (r.ok) { const d = await r.json(); setLogs(d.logs); }
+    } finally { setLogsLoading(false); }
   }
 
-  if (loading) {
-    return (
-      <div style={{ textAlign: 'center', padding: 60, color: '#666', fontWeight: 600 }}>
-        Loading deployment...
-      </div>
-    );
-  }
+  if (loading) return <div className="flex items-center justify-center py-20 text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mr-2" />Loading deployment...</div>;
+  if (!deployment) return <div className="flex items-center justify-center py-20 text-muted-foreground">Deployment not found</div>;
 
-  if (!deployment) {
-    return (
-      <div style={{ textAlign: 'center', padding: 60, color: '#666', fontWeight: 600 }}>
-        Deployment not found
-      </div>
-    );
-  }
+  const canAct = user.role === 'admin' || user.role === 'deployer';
+  const isRunning = deployment.status === 'running';
 
   return (
-    <div>
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        style={{ marginBottom: 28 }}
-      >
-        <Link
-          to={`/repositories/${deployment.repo_id}`}
-          style={{
-            color: '#666',
-            textDecoration: 'none',
-            fontSize: 13,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 4,
-            marginBottom: 20,
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-          }}
-        >
-          ← Back to Repository
-        </Link>
-
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-        }}>
-          <div>
-            <h1 style={{ fontSize: 32, fontWeight: 800, color: '#1a1a1a', marginBottom: 12, letterSpacing: '-1px' }}>
-              DEPLOYMENT #{deployment.id}
-            </h1>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <DeployBadge status={deployment.status} />
-              <span style={{ color: '#666', fontSize: 14, fontWeight: 600 }}>
-                {deployment.repo_full_name}
-              </span>
-            </div>
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <Button variant="ghost" size="sm" className="mb-3" asChild>
+            <Link to={`/repositories/${deployment.repo_id}`}><ArrowLeft className="w-4 h-4" />Back to Repository</Link>
+          </Button>
+          <h1 className="text-2xl font-bold tracking-tight">Deployment #{deployment.id}</h1>
+          <div className="flex items-center gap-2 mt-1">
+            <DeployBadge status={deployment.status} />
+            <span className="text-sm text-muted-foreground">{deployment.repo_full_name}</span>
           </div>
-          {(user.role === 'admin' || user.role === 'deployer') && (
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              style={{
-                padding: '12px 20px',
-                border: '3px solid #1a1a1a',
-                background: deleting ? '#f5f5f5' : '#ffffff',
-                color: deleting ? '#666' : '#1a1a1a',
-                fontWeight: 800,
-                cursor: deleting ? 'not-allowed' : 'pointer',
-                fontSize: 13,
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-                boxShadow: deleting ? '1px 1px 0 #1a1a1a' : '4px 4px 0 #1a1a1a',
-                transition: 'all 0.1s ease',
-              }}
-              onMouseOver={(e) => {
-                if (!deleting) {
-                  e.currentTarget.style.background = '#1a1a1a';
-                  e.currentTarget.style.color = '#ffffff';
-                  e.currentTarget.style.boxShadow = '2px 2px 0 #1a1a1a';
-                  e.currentTarget.style.transform = 'translate(2px, 2px)';
-                }
-              }}
-              onMouseOut={(e) => {
-                if (!deleting) {
-                  e.currentTarget.style.background = '#ffffff';
-                  e.currentTarget.style.color = '#1a1a1a';
-                  e.currentTarget.style.boxShadow = '4px 4px 0 #1a1a1a';
-                  e.currentTarget.style.transform = 'translate(0, 0)';
-                }
-              }}
-            >
-              {deleting
-                ? (deployment.status === 'running' ? 'Rolling Back...' : 'Deleting...')
-                : (deployment.status === 'running' ? 'Roll Back' : 'Delete')}
-            </button>
-          )}
         </div>
-      </motion.div>
+        {canAct && (
+          <Button variant={isRunning ? 'default' : 'outline'} onClick={handleDelete} disabled={deleting}>
+            {deleting ? <><Loader2 className="w-4 h-4 animate-spin" />{isRunning ? 'Rolling back...' : 'Deleting...'}</> : (isRunning ? 'Roll Back' : 'Delete')}
+          </Button>
+        )}
+      </div>
 
       {/* Deployment Info */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        style={{
-          background: '#ffffff',
-          border: '3px solid #1a1a1a',
-          padding: 28,
-          marginBottom: 24,
-          boxShadow: '4px 4px 0 #1a1a1a',
-        }}
-      >
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: 24,
-        }}>
-          <div>
-            <div style={{ color: '#666', fontSize: 11, marginBottom: 6, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Ref</div>
-            <div style={{ fontFamily: 'JetBrains Mono, monospace', color: '#1a1a1a', fontWeight: 700, fontSize: 15 }}>
-              {deployment.ref}
-            </div>
-          </div>
-
-          <div>
-            <div style={{ color: '#666', fontSize: 11, marginBottom: 6, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Type</div>
-            <div style={{ color: '#1a1a1a', fontWeight: 700, textTransform: 'capitalize', fontSize: 15 }}>
-              {deployment.ref_type}
-            </div>
-          </div>
-
-          <div>
-            <div style={{ color: '#666', fontSize: 11, marginBottom: 6, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Started</div>
-            <div style={{ color: '#1a1a1a', fontWeight: 700, fontSize: 15 }}>
-              {new Date(deployment.started_at).toLocaleString()}
-            </div>
-          </div>
-
-          {deployment.tunnel_url && (
+      <Card>
+        <CardContent className="p-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
             <div>
-              <div style={{ color: '#666', fontSize: 11, marginBottom: 6, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Tunnel</div>
-              <a
-                href={deployment.tunnel_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  color: '#1a1a1a',
-                  textDecoration: 'underline',
-                  fontWeight: 700,
-                  display: 'block',
-                  marginBottom: 8,
-                }}
-              >
-                {deployment.tunnel_url} ↗
-              </a>
-              {deployment.tunnel_port && (
-                <div style={{ fontSize: 11, color: '#666', fontWeight: 600, marginBottom: 4 }}>
-                  Local port: <span style={{ fontFamily: 'monospace', color: '#1a1a1a' }}>{deployment.tunnel_port}</span>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Ref</p>
+              <p className="font-mono text-sm font-semibold">{deployment.ref}</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Type</p>
+              <p className="text-sm font-medium capitalize">{deployment.ref_type}</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Started</p>
+              <p className="text-sm">{new Date(deployment.started_at).toLocaleString()}</p>
+            </div>
+            {deployment.tunnel_url && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Tunnel</p>
+                <a href={deployment.tunnel_url} target="_blank" rel="noopener noreferrer"
+                  className="text-sm text-blue-600 hover:underline flex items-center gap-1">
+                  {deployment.tunnel_url}<ExternalLink className="w-3 h-3" />
+                </a>
+                {deployment.tunnel_port && <p className="text-xs text-muted-foreground mt-1">Port: {deployment.tunnel_port}</p>}
+              </div>
+            )}
+            {deployment.container_id && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Container</p>
+                <p className="font-mono text-xs">{deployment.container_id.substring(0, 12)}</p>
+              </div>
+            )}
+            {deployment.triggered_by_login && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Triggered By</p>
+                <p className="text-sm">{deployment.triggered_by_login}</p>
+              </div>
+            )}
+            {deployment.env_vars && Object.keys(deployment.env_vars).length > 0 && (
+              <div className="col-span-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                  Env Vars ({Object.keys(deployment.env_vars).length})
+                </p>
+                <div className="bg-zinc-950 rounded-md p-3 font-mono text-xs max-h-40 overflow-y-auto space-y-1">
+                  {Object.entries(deployment.env_vars).map(([key, value]) => {
+                    const isSecret = /secret|key|password|token/i.test(key);
+                    return (
+                      <div key={key} className="text-zinc-300">
+                        <span className="text-zinc-500">{key}=</span>{isSecret ? '••••••••' : value}
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
-              {deployment.localtonet_tunnel_id && (
-                <div style={{ fontSize: 11, color: '#666', fontWeight: 600, marginBottom: 4 }}>
-                  Tunnel ID: <span style={{ fontFamily: 'monospace', color: '#1a1a1a' }}>{deployment.localtonet_tunnel_id}</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {deployment.container_id && (
-            <div>
-              <div style={{ color: '#666', fontSize: 11, marginBottom: 6, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Container</div>
-              <div style={{ fontFamily: 'JetBrains Mono, monospace', color: '#1a1a1a', fontSize: 13, fontWeight: 700 }}>
-                {deployment.container_id.substring(0, 12)}...
               </div>
-            </div>
-          )}
-
-          {deployment.triggered_by_login && (
-            <div>
-              <div style={{ color: '#666', fontSize: 11, marginBottom: 6, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Triggered By</div>
-              <div style={{ color: '#1a1a1a', fontWeight: 700, fontSize: 15 }}>
-                {deployment.triggered_by_login}
-              </div>
-            </div>
-          )}
-
-          {deployment.env_vars && Object.keys(deployment.env_vars).length > 0 && (
-            <div>
-              <div style={{ color: '#666', fontSize: 11, marginBottom: 6, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Env Vars ({Object.keys(deployment.env_vars).length})
-              </div>
-              <div style={{
-                background: '#f5f5f5',
-                border: '2px solid #1a1a1a',
-                padding: 12,
-                fontFamily: 'JetBrains Mono, monospace',
-                fontSize: 12,
-                maxHeight: 200,
-                overflow: 'auto',
-              }}>
-                {Object.entries(deployment.env_vars).map(([key, value]) => {
-                  const isSecret = key.toLowerCase().includes('secret') || 
-                                   key.toLowerCase().includes('key') || 
-                                   key.toLowerCase().includes('password') || 
-                                   key.toLowerCase().includes('token');
-                  return (
-                    <div key={key} style={{ marginBottom: 4, color: '#1a1a1a', fontWeight: 600 }}>
-                      <span style={{ color: '#666' }}>{key}={isSecret ? '••••••••' : value}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {deployment.error_message && (
-          <div style={{
-            marginTop: 24,
-            padding: 20,
-            border: '3px solid #1a1a1a',
-            background: '#f5f5f5',
-            boxShadow: '4px 4px 0 #1a1a1a',
-          }}>
-            <div style={{ color: '#1a1a1a', fontWeight: 800, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: 12 }}>
-              ⚠ Error
-            </div>
-            <div style={{ color: '#1a1a1a', fontFamily: 'JetBrains Mono, monospace', fontSize: 13, fontWeight: 600, lineHeight: 1.6 }}>
-              {deployment.error_message}
-            </div>
+            )}
           </div>
-        )}
-      </motion.div>
 
-      {/* Live Logs */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-        style={{
-          background: '#ffffff',
-          border: '3px solid #1a1a1a',
-          padding: 28,
-          boxShadow: '4px 4px 0 #1a1a1a',
-        }}
-      >
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 20,
-        }}>
-          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Build Logs
-          </h2>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '6px 12px',
-            border: '2px solid #1a1a1a',
-            background: connected ? '#1a1a1a' : '#ffffff',
-            color: connected ? '#ffffff' : '#666',
-            fontSize: 11,
-            fontWeight: 800,
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-          }}>
-            <span style={{
-              width: 6,
-              height: 6,
-              background: connected ? '#ffffff' : '#666',
-            }} />
-            {connected ? 'LIVE' : 'CONNECTING...'}
-          </div>
-        </div>
-
-        <div style={{ height: 500 }}>
-          {logsLoading ? (
-            <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
-              Loading logs...
-            </div>
-          ) : (
-            <LogViewer logs={logs} />
+          {deployment.error_message && (
+            <Alert variant="destructive" className="mt-4">
+              <AlertDescription className="font-mono text-xs whitespace-pre-wrap">{deployment.error_message}</AlertDescription>
+            </Alert>
           )}
-        </div>
-      </motion.div>
+        </CardContent>
+      </Card>
+
+      {/* Logs */}
+      <Card>
+        <CardHeader className="pb-3 flex-row items-center justify-between">
+          <CardTitle className="text-base">Build Logs</CardTitle>
+          <Badge variant={connected ? 'success' : 'secondary'} className="flex items-center gap-1 text-xs">
+            <Radio className="w-3 h-3" />
+            {connected ? 'Live' : 'Connecting...'}
+          </Badge>
+        </CardHeader>
+        <CardContent className="p-0 pb-0">
+          <div className="h-[500px] rounded-b-lg overflow-hidden">
+            {logsLoading ? (
+              <div className="flex items-center justify-center h-full text-muted-foreground bg-zinc-950">
+                <Loader2 className="w-5 h-5 animate-spin mr-2 text-zinc-500" />
+                <span className="text-zinc-500 text-sm">Loading logs...</span>
+              </div>
+            ) : (
+              <LogViewer logs={logs} />
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

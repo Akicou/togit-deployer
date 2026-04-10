@@ -1,65 +1,30 @@
-import { motion } from 'framer-motion';
+import { cn } from '../lib/utils';
 
 interface DeployBadgeProps {
   status: string;
 }
 
-const statusConfig: Record<string, { color: string; bg: string; label: string }> = {
-  pending: { color: '#1a1a1a', bg: '#ffffff', label: 'PENDING' },
-  building: { color: '#1a1a1a', bg: '#ffffff', label: 'BUILDING' },
-  running: { color: '#ffffff', bg: '#1a1a1a', label: 'RUNNING' },
-  failed: { color: '#ffffff', bg: '#1a1a1a', label: 'FAILED' },
-  rolled_back: { color: '#ffffff', bg: '#1a1a1a', label: 'ROLLED BACK' },
-  never: { color: '#666', bg: '#f5f5f5', label: 'NEVER' },
+const statusConfig: Record<string, { className: string; label: string; dot?: boolean; spin?: boolean }> = {
+  pending:     { className: 'bg-yellow-100 text-yellow-800 border-yellow-200', label: 'Pending',     spin: true },
+  building:    { className: 'bg-blue-100 text-blue-800 border-blue-200',       label: 'Building',    spin: true },
+  running:     { className: 'bg-green-100 text-green-800 border-green-200',    label: 'Running',     dot: true },
+  failed:      { className: 'bg-red-100 text-red-800 border-red-200',          label: 'Failed' },
+  rolled_back: { className: 'bg-orange-100 text-orange-800 border-orange-200', label: 'Rolled Back' },
+  never:       { className: 'bg-muted text-muted-foreground border-border',    label: 'Never' },
 };
 
 export default function DeployBadge({ status }: DeployBadgeProps) {
   const config = statusConfig[status] || statusConfig.never;
-  const isAnimating = status === 'building' || status === 'pending';
 
   return (
-    <motion.span
-      animate={isAnimating ? { scale: [1, 1.02, 1] } : {}}
-      transition={{ repeat: Infinity, duration: 1.5 }}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '6px 12px',
-        border: '2px solid #1a1a1a',
-        background: config.bg,
-        color: config.color,
-        fontSize: 11,
-        fontWeight: 800,
-        textTransform: 'uppercase',
-        letterSpacing: '0.5px',
-        boxShadow: isAnimating ? '2px 2px 0 #1a1a1a' : '1px 1px 0 #1a1a1a',
-      }}
-    >
-      {isAnimating && (
-        <motion.span
-          animate={{ rotate: 360 }}
-          transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
-          style={{
-            width: 8,
-            height: 8,
-            border: `2px solid ${config.color}`,
-            borderTopColor: 'transparent',
-          }}
-        />
+    <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-xs font-medium', config.className)}>
+      {config.spin && (
+        <span className="w-2.5 h-2.5 rounded-full border-2 border-current border-t-transparent animate-spin" />
       )}
-      {status === 'running' && (
-        <motion.span
-          animate={{ opacity: [1, 0.3, 1] }}
-          transition={{ repeat: Infinity, duration: 2 }}
-          style={{
-            width: 6,
-            height: 6,
-            background: config.color,
-          }}
-        />
+      {config.dot && (
+        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
       )}
       {config.label}
-    </motion.span>
+    </span>
   );
 }

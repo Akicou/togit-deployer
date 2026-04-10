@@ -1,7 +1,10 @@
-import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import type { Repository } from '../types';
 import DeployBadge from './DeployBadge';
+import { Card, CardContent } from './ui/card';
+import { Button } from './ui/button';
+import { Badge } from './ui/badge';
+import { ExternalLink, Rocket } from 'lucide-react';
 
 interface RepoCardProps {
   repo: Repository;
@@ -11,160 +14,51 @@ interface RepoCardProps {
 
 export default function RepoCard({ repo, onDeploy, canDeploy = false }: RepoCardProps) {
   return (
-    <motion.div
-      whileHover={{ y: -2, boxShadow: '6px 6px 0 #1a1a1a' }}
-      style={{
-        background: '#ffffff',
-        border: '3px solid #1a1a1a',
-        padding: 24,
-        boxShadow: '4px 4px 0 #1a1a1a',
-        transition: 'all 0.1s ease',
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-        <div>
-          <Link
-            to={`/repositories/${repo.id}`}
-            style={{
-              color: '#1a1a1a',
-              textDecoration: 'none',
-              fontWeight: 800,
-              fontSize: 16,
-              letterSpacing: '-0.3px',
-            }}
-          >
-            {repo.full_name}
-          </Link>
-          <div style={{ color: '#666', fontSize: 12, marginTop: 6, fontWeight: 700 }}>
-            service: {repo.service_name}{repo.project_name ? ` · project: ${repo.project_name}` : ''}
+    <Card className="hover:shadow-md transition-shadow">
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between gap-2 mb-3">
+          <div className="min-w-0 flex-1">
+            <Link to={`/repositories/${repo.id}`} className="font-semibold text-foreground hover:underline block truncate">
+              {repo.full_name}
+            </Link>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {repo.service_name}{repo.project_name ? ` · ${repo.project_name}` : ''}
+            </p>
           </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-            <span style={{
-              fontSize: 11,
-              padding: '4px 10px',
-              border: '2px solid #1a1a1a',
-              background: repo.deploy_mode === 'release' ? '#1a1a1a' : '#ffffff',
-              color: repo.deploy_mode === 'release' ? '#ffffff' : '#1a1a1a',
-              fontWeight: 800,
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-            }}>
-              {repo.deploy_mode}
-            </span>
-            {repo.private && (
-              <span style={{
-                fontSize: 11,
-                padding: '4px 10px',
-                border: '2px solid #1a1a1a',
-                background: '#ffffff',
-                color: '#1a1a1a',
-                fontWeight: 800,
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-              }}>
-                Private
-              </span>
-            )}
-          </div>
+          <DeployBadge status={repo.last_deployment_status || 'never'} />
         </div>
-        <DeployBadge status={repo.last_deployment_status || 'never'} />
-      </div>
 
-      {repo.last_deployed_ref && (
-        <div style={{
-          fontSize: 13,
-          color: '#666',
-          marginBottom: 12,
-          fontFamily: 'JetBrains Mono, monospace',
-        }}>
-          <span style={{ color: '#1a1a1a', fontWeight: 700 }}>LAST:</span> {repo.last_deployed_ref.substring(0, 12)}...
+        <div className="flex gap-1.5 mb-3 flex-wrap">
+          <Badge variant={repo.deploy_mode === 'release' ? 'default' : 'secondary'} className="text-xs capitalize">
+            {repo.deploy_mode}
+          </Badge>
+          {repo.private && <Badge variant="outline" className="text-xs">Private</Badge>}
         </div>
-      )}
 
-      {repo.last_tunnel_url && (
-        <a
-          href={repo.last_tunnel_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 4,
-            fontSize: 13,
-            color: '#1a1a1a',
-            textDecoration: 'underline',
-            marginBottom: 16,
-            fontWeight: 700,
-          }}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-            <polyline points="15 3 21 3 21 9" />
-            <line x1="10" y1="14" x2="21" y2="3" />
-          </svg>
-          {repo.last_tunnel_url}
-        </a>
-      )}
-
-      <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-        <Link
-          to={`/repositories/${repo.id}`}
-          style={{
-            flex: 1,
-            padding: '12px 16px',
-            border: '2px solid #1a1a1a',
-            background: '#ffffff',
-            color: '#1a1a1a',
-            textDecoration: 'none',
-            textAlign: 'center',
-            fontSize: 13,
-            fontWeight: 800,
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-            boxShadow: '3px 3px 0 #1a1a1a',
-            transition: 'all 0.1s ease',
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.boxShadow = '1px 1px 0 #1a1a1a';
-            e.currentTarget.style.transform = 'translate(2px, 2px)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.boxShadow = '3px 3px 0 #1a1a1a';
-            e.currentTarget.style.transform = 'translate(0, 0)';
-          }}
-        >
-          View
-        </Link>
-        {canDeploy && onDeploy && (
-          <button
-            onClick={() => onDeploy(repo.id, repo.full_name)}
-            style={{
-              flex: 1,
-              padding: '12px 16px',
-              border: '2px solid #1a1a1a',
-              background: '#1a1a1a',
-              color: '#ffffff',
-              fontSize: 13,
-              fontWeight: 800,
-              cursor: 'pointer',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              boxShadow: '3px 3px 0 #1a1a1a',
-              transition: 'all 0.1s ease',
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.boxShadow = '1px 1px 0 #1a1a1a';
-              e.currentTarget.style.transform = 'translate(2px, 2px)';
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.boxShadow = '3px 3px 0 #1a1a1a';
-              e.currentTarget.style.transform = 'translate(0, 0)';
-            }}
-          >
-            Deploy
-          </button>
+        {repo.last_deployed_ref && (
+          <p className="font-mono text-xs text-muted-foreground mb-2">
+            Last: {repo.last_deployed_ref.substring(0, 12)}
+          </p>
         )}
-      </div>
-    </motion.div>
+
+        {repo.last_tunnel_url && (
+          <a href={repo.last_tunnel_url} target="_blank" rel="noopener noreferrer"
+            className="text-xs text-blue-600 hover:underline flex items-center gap-1 mb-3 truncate">
+            <ExternalLink className="w-3 h-3 shrink-0" />{repo.last_tunnel_url}
+          </a>
+        )}
+
+        <div className="flex gap-2 mt-3">
+          <Button variant="outline" size="sm" className="flex-1" asChild>
+            <Link to={`/repositories/${repo.id}`}>View</Link>
+          </Button>
+          {canDeploy && onDeploy && (
+            <Button size="sm" className="flex-1" onClick={() => onDeploy(repo.id, repo.full_name)}>
+              <Rocket className="w-3 h-3" />Deploy
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
