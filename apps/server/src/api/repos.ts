@@ -211,12 +211,10 @@ export async function triggerDeploy(req: Request, user: User, repoId: number): P
     return Response.json({ error: 'No deploy access to this project' }, { status: 403 });
   }
 
-  let env_vars: Record<string, string> = {};
   let force = false;
   try {
     const body = await req.json();
     if (typeof body === 'object' && body !== null) {
-      if ('env_vars' in body) env_vars = (body.env_vars as Record<string, string>) || {};
       if ('force' in body) force = body.force === true;
     }
   } catch {}
@@ -246,7 +244,12 @@ export async function triggerDeploy(req: Request, user: User, repoId: number): P
       refType = 'commit';
     }
 
-    const deployment = await deploy(repo, ref, refType, user, env_vars);
+    // Use repo-level env vars from configuration
+    const repoEnvVars = typeof repo.deployment_env_vars === 'string'
+      ? JSON.parse(repo.deployment_env_vars)
+      : (repo.deployment_env_vars || {});
+    
+    const deployment = await deploy(repo, ref, refType, user, repoEnvVars);
     return Response.json({ deployment }, { status: 201 });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });

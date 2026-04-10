@@ -264,6 +264,35 @@ export default function DeploymentDetail({ user }: { user: any }) {
               </div>
             </div>
           )}
+
+          {deployment.env_vars && Object.keys(deployment.env_vars).length > 0 && (
+            <div>
+              <div style={{ color: '#666', fontSize: 11, marginBottom: 6, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Env Vars ({Object.keys(deployment.env_vars).length})
+              </div>
+              <div style={{
+                background: '#f5f5f5',
+                border: '2px solid #1a1a1a',
+                padding: 12,
+                fontFamily: 'JetBrains Mono, monospace',
+                fontSize: 12,
+                maxHeight: 200,
+                overflow: 'auto',
+              }}>
+                {Object.entries(deployment.env_vars).map(([key, value]) => {
+                  const isSecret = key.toLowerCase().includes('secret') || 
+                                   key.toLowerCase().includes('key') || 
+                                   key.toLowerCase().includes('password') || 
+                                   key.toLowerCase().includes('token');
+                  return (
+                    <div key={key} style={{ marginBottom: 4, color: '#1a1a1a', fontWeight: 600 }}>
+                      <span style={{ color: '#666' }}>{key}={isSecret ? '••••••••' : value}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {deployment.error_message && (

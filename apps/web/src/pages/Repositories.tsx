@@ -20,9 +20,6 @@ export default function Repositories({ user }: RepositoriesProps) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDeployModal, setShowDeployModal] = useState<{ repoId: number; repoName: string } | null>(null);
   const [deployingRepo, setDeployingRepo] = useState<number | null>(null);
-  const [envVars, setEnvVars] = useState<Record<string, string>>({});
-  const [envExample, setEnvExample] = useState<Record<string, string> | null>(null);
-  const [loadingEnv, setLoadingEnv] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -107,35 +104,14 @@ export default function Repositories({ user }: RepositoriesProps) {
   }
 
   async function handleDeployClick(repoId: number, repoName: string) {
-    setEnvVars({});
-    setEnvExample(null);
-    setLoadingEnv(true);
     setShowDeployModal({ repoId, repoName });
-    
-    // Try to fetch .env.example
-    try {
-      const response = await api.get(`/api/repos/${repoId}/env-example`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.env_example) {
-          setEnvExample(data.env_example);
-          setEnvVars(data.env_example);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load env example:', error);
-    } finally {
-      setLoadingEnv(false);
-    }
   }
 
   async function handleDeployConfirm() {
     if (!showDeployModal) return;
     setDeployingRepo(showDeployModal.repoId);
     try {
-      const response = await api.post(`/api/repos/${showDeployModal.repoId}/deploy`, {
-        env_vars: envVars,
-      });
+      const response = await api.post(`/api/repos/${showDeployModal.repoId}/deploy`, {});
       if (response.ok) {
         toast('Deployment started', 'success');
         await loadRepos();
@@ -460,10 +436,6 @@ export default function Repositories({ user }: RepositoriesProps) {
             showDeployModal={showDeployModal}
             onClose={() => setShowDeployModal(null)}
             onDeploy={handleDeployConfirm}
-            envVars={envVars}
-            setEnvVars={setEnvVars}
-            envExample={envExample}
-            loadingEnv={loadingEnv}
             deploying={deployingRepo === showDeployModal.repoId}
           />
         )}
@@ -490,10 +462,7 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
   const navigate = useNavigate();
   const toast = useToast();
   const [showDeployModal, setShowDeployModal] = useState<{ repoId: number; repoName: string } | null>(null);
-  const [deployEnvVars, setDeployEnvVars] = useState<Record<string, string>>({});
   const [deployForce, setDeployForce] = useState(false);
-  const [envExample, setEnvExample] = useState<Record<string, string> | null>(null);
-  const [loadingEnv, setLoadingEnv] = useState(false);
   const [config, setConfig] = useState({
     root_path: repo.root_path,
     deploy_mode: repo.deploy_mode,
@@ -519,7 +488,6 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
     setDeploying(true);
     try {
       const response = await api.post(`/api/repos/${showDeployModal.repoId}/deploy`, {
-        env_vars: deployEnvVars,
         force: deployForce,
       });
       if (response.ok) {
@@ -723,38 +691,9 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
               const isDeploying = repo.last_deployment_status === 'pending' || repo.last_deployment_status === 'building';
               return (
                 <button
-                  onClick={async () => {
+                  onClick={() => {
                     if (!isDeploying) {
-                      const savedVars = repo.deployment_env_vars || {};
-                      setDeployEnvVars({ ...savedVars });
-                      setEnvExample(null);
-                      setLoadingEnv(true);
                       setShowDeployModal({ repoId: repo.id, repoName: repo.full_name });
-                      try {
-                        const response = await api.get(`/api/repos/${repo.id}/env-example`);
-                        if (response.ok) {
-                          const data = await response.json();
-                          if (data.env_example) {
-                            setEnvExample(data.env_example);
-                            // Merge: saved vars take priority; add missing keys from .env.example with empty values
-                            setDeployEnvVars((prev) => {
-                              const merged: Record<string, string> = {};
-                              for (const key of Object.keys(data.env_example)) {
-                                merged[key] = key in prev ? prev[key] : '';
-                              }
-                              // Keep any saved vars not in .env.example
-                              for (const [key, value] of Object.entries(prev)) {
-                                if (!(key in merged)) merged[key] = value;
-                              }
-                              return merged;
-                            });
-                          }
-                        }
-                      } catch (error) {
-                        console.error('Failed to load env example:', error);
-                      } finally {
-                        setLoadingEnv(false);
-                      }
                     }
                   }}
                   disabled={isDeploying}
@@ -1174,10 +1113,6 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
           showDeployModal={showDeployModal}
           onClose={() => { setShowDeployModal(null); setDeployForce(false); }}
           onDeploy={handleDeployConfirm}
-          envVars={deployEnvVars}
-          setEnvVars={setDeployEnvVars}
-          envExample={envExample}
-          loadingEnv={loadingEnv}
           deploying={deploying}
           force={deployForce}
           setForce={setDeployForce}
@@ -1652,6 +1587,26 @@ function QuickAddServiceModal({
     fontFamily: 'inherit',
   };
 
+  const modalBackdrop: React.CSSProperties = {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0, 0, 0, 0.6)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+  };
+
+  const modalStyle: React.CSSProperties = {
+    background: '#ffffff',
+    border: '4px solid #1a1a1a',
+    padding: 32,
+    maxWidth: '90%',
+    maxHeight: '85vh',
+    overflow: 'auto',
+    boxShadow: '8px 8px 0 #1a1a1a',
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -1758,7 +1713,7 @@ function QuickAddServiceModal({
                           fontWeight: 800,
                           textTransform: 'uppercase',
                         }}>
-                          {repos.filter((r: any) => r.project_id === project.id).length} services
+                          {existingRepos.filter((r: any) => r.project_id === project.id).length} services
                         </span>
                       </div>
                     </button>
@@ -2337,10 +2292,6 @@ function DeployModal({
   showDeployModal,
   onClose,
   onDeploy,
-  envVars,
-  setEnvVars,
-  envExample,
-  loadingEnv,
   deploying,
   force,
   setForce,
@@ -2348,82 +2299,11 @@ function DeployModal({
   showDeployModal: { repoId: number; repoName: string } | null;
   onClose: () => void;
   onDeploy: () => void;
-  envVars: Record<string, string>;
-  setEnvVars: (vars: Record<string, string>) => void;
-  envExample: Record<string, string> | null;
-  loadingEnv: boolean;
   deploying?: boolean;
   force?: boolean;
   setForce?: (v: boolean) => void;
 }) {
-  const [newKey, setNewKey] = useState('');
-  const [newValue, setNewValue] = useState('');
-  const [showRawEditor, setShowRawEditor] = useState(false);
-  const [showSecrets, setShowSecrets] = useState(false);
-  const [lastDeploymentEnv, setLastDeploymentEnv] = useState<Record<string, string> | null>(null);
-  const [loadingLastEnv, setLoadingLastEnv] = useState(false);
-
-  // Load last successful deployment's env vars for comparison
-  useEffect(() => {
-    if (showDeployModal) {
-      async function loadLastDeploymentEnv() {
-        setLoadingLastEnv(true);
-        try {
-          const response = await api.get(`/api/repos/${showDeployModal.repoId}/deployments`);
-          if (response.ok) {
-            const data = await response.json();
-            const lastSuccessful = data.deployments?.find(
-              (d: any) => d.status === 'running'
-            );
-            if (lastSuccessful?.env_vars) {
-              setLastDeploymentEnv(lastSuccessful.env_vars);
-            }
-          }
-        } catch (error) {
-          console.error('Failed to load last deployment env:', error);
-        } finally {
-          setLoadingLastEnv(false);
-        }
-      }
-      loadLastDeploymentEnv();
-    }
-  }, [showDeployModal]);
-
   if (!showDeployModal) return null;
-
-  const inputStyle: React.CSSProperties = {
-    flex: 1,
-    padding: '10px 12px',
-    border: '2px solid #1a1a1a',
-    background: '#ffffff',
-    color: '#1a1a1a',
-    fontSize: 12,
-    fontWeight: 700,
-    fontFamily: 'JetBrains Mono, monospace',
-    outline: 'none',
-  };
-
-  const valueStyle: React.CSSProperties = {
-    flex: 2,
-    padding: '10px 12px',
-    border: '2px solid #1a1a1a',
-    background: '#ffffff',
-    color: '#1a1a1a',
-    fontSize: 12,
-    fontWeight: 600,
-    fontFamily: 'JetBrains Mono, monospace',
-    outline: 'none',
-  };
-
-  const labelStyle: React.CSSProperties = {
-    display: 'block',
-    color: '#666',
-    fontSize: 11,
-    marginBottom: 8,
-    fontWeight: 800,
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px',
-  };
 
   return (
     <motion.div
@@ -2450,10 +2330,8 @@ function DeployModal({
           background: '#ffffff',
           border: '4px solid #1a1a1a',
           padding: 32,
-          width: 600,
+          width: 480,
           maxWidth: '90%',
-          maxHeight: '85vh',
-          overflow: 'auto',
           boxShadow: '8px 8px 0 #1a1a1a',
         }}
       >
@@ -2481,294 +2359,64 @@ function DeployModal({
           </button>
         </div>
 
-        {envExample && (
-          <div style={{
-            padding: 12,
-            border: '2px dashed #1a1a1a',
-            background: '#f0fff4',
-            marginBottom: 20,
-          }}>
-            <p style={{ color: '#1a1a1a', fontWeight: 700, fontSize: 12, marginBottom: 4 }}>
-              ✅ Loaded from .env.example
-            </p>
-            <p style={{ color: '#666', fontWeight: 600, fontSize: 11 }}>
-              Edit values below or add new variables
-            </p>
-          </div>
-        )}
+        <p style={{ color: '#666', fontSize: 13, fontWeight: 600, marginBottom: 24, lineHeight: 1.6 }}>
+          Deploy the latest {showDeployModal.repoName} using the configured environment variables from repository settings.
+        </p>
 
-        {/* Quick Actions */}
-        {lastDeploymentEnv && (
-          <div style={{
-            padding: 12,
-            border: '2px solid #1a1a1a',
-            background: '#f5f5f5',
-            marginBottom: 20,
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#1a1a1a' }}>
-                Quick Actions
-              </span>
-              <button
-                onClick={() => setEnvVars({ ...lastDeploymentEnv })}
-                style={{
-                  padding: '6px 12px',
-                  border: '2px solid #1a1a1a',
-                  background: '#1a1a1a',
-                  color: '#ffffff',
-                  fontSize: 11,
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                }}
-              >
-                Use same env as last deployment
-              </button>
-            </div>
-            <p style={{ color: '#666', fontSize: 11, fontWeight: 600, margin: 0 }}>
-              Last deployment had {Object.keys(lastDeploymentEnv).length} environment variables
-            </p>
-          </div>
-        )}
-
-        {loadingEnv ? (
-          <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
-            Loading environment variables...
-          </div>
-        ) : (
-          <>
-            <div style={{ marginBottom: 24 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <label style={labelStyle}>Environment Variables</label>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <button
-                    onClick={() => setShowSecrets(!showSecrets)}
-                    style={{
-                      padding: '6px 12px',
-                      border: '2px solid #1a1a1a',
-                      background: '#ffffff',
-                      color: '#1a1a1a',
-                      fontSize: 11,
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
-                    }}
-                  >
-                    {showSecrets ? '👁 Hide Values' : '🔒 Show Values'}
-                  </button>
-                  <button
-                    onClick={() => setShowRawEditor(true)}
-                    style={{
-                      padding: '6px 12px',
-                      border: '2px solid #1a1a1a',
-                      background: '#ffffff',
-                      color: '#1a1a1a',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      fontSize: 11,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
-                    }}
-                  >
-                    Raw Editor
-                  </button>
-                </div>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
-                {Object.entries(envVars).map(([key, value]) => {
-                  const lastValue = lastDeploymentEnv?.[key];
-                  const isChanged = lastValue !== undefined && lastValue !== value;
-                  const isSecret = key.toLowerCase().includes('secret') ||
-                    key.toLowerCase().includes('password') ||
-                    key.toLowerCase().includes('token') ||
-                    key.toLowerCase().includes('key') ||
-                    key.toLowerCase().includes('api');
-
-                  return (
-                    <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <input
-                        value={key}
-                        readOnly
-                        style={{ ...inputStyle, background: '#f5f5f5' }}
-                      />
-                      <div style={{ flex: 2, position: 'relative' }}>
-                        {isChanged && (
-                          <div style={{
-                            position: 'absolute',
-                            top: -6,
-                            right: -6,
-                            padding: '2px 6px',
-                            background: '#e67e22',
-                            color: '#ffffff',
-                            fontSize: 10,
-                            fontWeight: 800,
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.5px',
-                            borderRadius: 3,
-                            zIndex: 1,
-                          }}>
-                            Changed
-                          </div>
-                        )}
-                        <input
-                          value={isSecret && !showSecrets ? '•••••••••' : value}
-                          onChange={(e) => setEnvVars({ ...envVars, [key]: e.target.value })}
-                          type={isSecret && !showSecrets ? 'password' : 'text'}
-                          style={{
-                            ...valueStyle,
-                            color: isSecret && !showSecrets ? '#999' : '#1a1a1a',
-                          }}
-                        />
-                      </div>
-                      <button
-                        onClick={() => {
-                          const copy = { ...envVars };
-                          delete copy[key];
-                          setEnvVars(copy);
-                        }}
-                        style={{
-                          padding: '10px 12px',
-                          border: '2px solid #1a1a1a',
-                          background: '#ffffff',
-                          color: '#1a1a1a',
-                          fontWeight: 800,
-                          cursor: 'pointer',
-                          fontSize: 14,
-                        }}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-              {lastDeploymentEnv && Object.keys(envVars).length > 0 && (
-                <div style={{
-                  padding: 10,
-                  border: '2px solid #e67e22',
-                  background: '#fef5e8',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: '#e67e22',
-                }}>
-                  {(() => {
-                    const changes = Object.entries(envVars).filter(
-                      ([key, value]) => lastDeploymentEnv![key] !== value
-                    );
-                    return changes.length > 0
-                      ? `${changes.length} variable${changes.length === 1 ? '' : 's'} changed from last deployment`
-                      : 'No changes from last deployment';
-                  })()}
-                </div>
-              )}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  value={newKey}
-                  onChange={(e) => setNewKey(e.target.value)}
-                  placeholder="KEY"
-                  style={inputStyle}
-                />
-                <input
-                  value={newValue}
-                  onChange={(e) => setNewValue(e.target.value)}
-                  placeholder="value"
-                  style={valueStyle}
-                />
-                <button
-                  onClick={() => {
-                    if (newKey.trim()) {
-                      setEnvVars({ ...envVars, [newKey.trim()]: newValue });
-                      setNewKey('');
-                      setNewValue('');
-                    }
-                  }}
-                  style={{
-                    padding: '10px 14px',
-                    border: '2px solid #1a1a1a',
-                    background: '#1a1a1a',
-                    color: '#ffffff',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    fontSize: 12,
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  Add
-                </button>
-              </div>
-            </div>
-
-            {setForce && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={force ?? false}
-                  onChange={(e) => setForce(e.target.checked)}
-                  style={{ width: 16, height: 16, cursor: 'pointer' }}
-                />
-                <span style={{ fontSize: 11, fontWeight: 700, color: force ? '#c0392b' : '#666', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Force deploy (bypass active deployment lock)
-                </span>
-              </label>
-            )}
-
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button
-                onClick={onClose}
-                style={{
-                  flex: 1,
-                  padding: '14px',
-                  border: '3px solid #1a1a1a',
-                  background: '#ffffff',
-                  color: '#1a1a1a',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  fontSize: 13,
-                  boxShadow: '3px 3px 0 #1a1a1a',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={onDeploy}
-                disabled={deploying}
-                style={{
-                  flex: 1,
-                  padding: '14px',
-                  border: `3px solid ${force ? '#c0392b' : '#1a1a1a'}`,
-                  background: deploying ? '#f5f5f5' : force ? '#c0392b' : '#1a1a1a',
-                  color: deploying ? '#666' : '#ffffff',
-                  fontWeight: 800,
-                  cursor: deploying ? 'not-allowed' : 'pointer',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  fontSize: 13,
-                  boxShadow: deploying ? '1px 1px 0 #1a1a1a' : `3px 3px 0 ${force ? '#c0392b' : '#1a1a1a'}`,
-                  transition: 'all 0.1s ease',
-                }}
-              >
-                {deploying ? 'Deploying...' : force ? 'Force Deploy' : 'Deploy'}
-              </button>
-            </div>
-          </>
-        )}
-
-        <AnimatePresence>
-          {showRawEditor && (
-            <RawEditorModal
-              envVars={envVars}
-              onClose={() => setShowRawEditor(false)}
-              onUpdate={(newVars) => {
-                setEnvVars(newVars);
-                setShowRawEditor(false);
-              }}
+        {setForce && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={force ?? false}
+              onChange={(e) => setForce(e.target.checked)}
+              style={{ width: 16, height: 16, cursor: 'pointer' }}
             />
-          )}
-        </AnimatePresence>
+            <span style={{ fontSize: 11, fontWeight: 700, color: force ? '#c0392b' : '#666', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Force deploy (bypass active deployment lock)
+            </span>
+          </label>
+        )}
+
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button
+            onClick={onClose}
+            style={{
+              flex: 1,
+              padding: '14px',
+              border: '3px solid #1a1a1a',
+              background: '#ffffff',
+              color: '#1a1a1a',
+              fontWeight: 800,
+              cursor: 'pointer',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              fontSize: 13,
+              boxShadow: '3px 3px 0 #1a1a1a',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onDeploy}
+            disabled={deploying}
+            style={{
+              flex: 1,
+              padding: '14px',
+              border: `3px solid ${force ? '#c0392b' : '#1a1a1a'}`,
+              background: deploying ? '#f5f5f5' : force ? '#c0392b' : '#1a1a1a',
+              color: deploying ? '#666' : '#ffffff',
+              fontWeight: 800,
+              cursor: deploying ? 'not-allowed' : 'pointer',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              fontSize: 13,
+              boxShadow: deploying ? '1px 1px 0 #1a1a1a' : `3px 3px 0 ${force ? '#c0392b' : '#1a1a1a'}`,
+              transition: 'all 0.1s ease',
+            }}
+          >
+            {deploying ? 'Deploying...' : force ? 'Force Deploy' : 'Deploy'}
+          </button>
+        </div>
       </motion.div>
     </motion.div>
   );

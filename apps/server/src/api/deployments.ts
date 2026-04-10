@@ -101,6 +101,8 @@ export async function deleteDeployment(req: Request, deploymentId: number, user:
   if (deployment.container_id) {
     await stopContainer(deployment.container_id).catch(() => {});
   }
+  // Delete logs first to avoid FK constraint violation
+  await query('DELETE FROM logs WHERE deployment_id = $1', [deploymentId]);
   // Tunnel is NOT touched — it belongs to the repo, not the deployment
   await query('DELETE FROM deployments WHERE id = $1', [deploymentId]);
 
