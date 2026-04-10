@@ -63,20 +63,20 @@ export default function DeploymentDetail({ user }: { user: any }) {
   const isRunning = deployment.status === 'running';
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
+    <div className="space-y-4 lg:space-y-6">
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+        <div className="flex-1 min-w-0">
           <Button variant="ghost" size="sm" className="mb-3" asChild>
             <Link to={`/repositories/${deployment.repo_id}`}><ArrowLeft className="w-4 h-4" />Back to Repository</Link>
           </Button>
-          <h1 className="text-2xl font-bold tracking-tight">Deployment #{deployment.id}</h1>
-          <div className="flex items-center gap-2 mt-1">
+          <h1 className="text-xl lg:text-2xl font-bold tracking-tight">Deployment #{deployment.id}</h1>
+          <div className="flex flex-wrap items-center gap-2 mt-1">
             <DeployBadge status={deployment.status} />
-            <span className="text-sm text-muted-foreground">{deployment.repo_full_name}</span>
+            <span className="text-sm text-muted-foreground break-all">{deployment.repo_full_name}</span>
           </div>
         </div>
         {canAct && (
-          <Button variant={isRunning ? 'default' : 'outline'} onClick={handleDelete} disabled={deleting}>
+          <Button variant={isRunning ? 'default' : 'outline'} onClick={handleDelete} disabled={deleting} className="shrink-0">
             {deleting ? <><Loader2 className="w-4 h-4 animate-spin" />{isRunning ? 'Rolling back...' : 'Deleting...'}</> : (isRunning ? 'Roll Back' : 'Delete')}
           </Button>
         )}
@@ -84,8 +84,8 @@ export default function DeploymentDetail({ user }: { user: any }) {
 
       {/* Deployment Info */}
       <Card>
-        <CardContent className="p-6">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        <CardContent className="p-4 lg:p-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 lg:gap-6">
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Ref</p>
               <p className="font-mono text-sm font-semibold">{deployment.ref}</p>

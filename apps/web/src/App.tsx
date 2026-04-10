@@ -14,14 +14,26 @@ import { api } from './lib/api';
 import type { User } from './types';
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Menu } from 'lucide-react';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     checkAuth();
+    // Close sidebar on route change for mobile
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) {
+        setSidebarOpen(true);
+      } else {
+        setSidebarOpen(false);
+      }
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   async function checkAuth() {
@@ -60,20 +72,47 @@ export default function App() {
     <ToastProvider>
       <BrowserRouter>
         <div className="flex min-h-screen bg-background">
-          <Sidebar user={user} onLogout={checkAuth} />
-          <main className="flex-1 ml-64 p-8 min-h-screen">
-            <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<Dashboard user={user} />} />
-              <Route path="/projects" element={<Projects user={user} />} />
-              <Route path="/projects/:id" element={<Projects user={user} />} />
-              <Route path="/repositories" element={<Repositories user={user} />} />
-              <Route path="/repositories/:id" element={<Repositories user={user} />} />
-              <Route path="/deployments/:id" element={<DeploymentDetail user={user} />} />
-              <Route path="/logs" element={<Logs />} />
-              <Route path="/tunnels" element={<Tunnels />} />
-              <Route path="/settings" element={<Settings user={user} />} />
-            </Routes>
+          {/* Mobile overlay */}
+          {sidebarOpen && window.innerWidth < 1024 && (
+            <div
+              className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+              onClick={() => setSidebarOpen(false)}
+            />
+          )}
+          
+          {/* Sidebar */}
+          <Sidebar 
+            user={user} 
+            onLogout={checkAuth} 
+            isOpen={sidebarOpen} 
+            onClose={() => setSidebarOpen(false)} 
+          />
+          
+          {/* Main content */}
+          <main className="flex-1 min-h-screen">
+            {/* Mobile header */}
+            <header className="lg:hidden sticky top-0 z-30 bg-card border-b border-border px-4 py-3 flex items-center justify-between">
+              <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)}>
+                <Menu className="w-5 h-5" />
+              </Button>
+              <span className="font-bold">Togit</span>
+              <div className="w-9" />
+            </header>
+            
+            <div className="p-4 lg:p-8">
+              <Routes>
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/dashboard" element={<Dashboard user={user} />} />
+                <Route path="/projects" element={<Projects user={user} />} />
+                <Route path="/projects/:id" element={<Projects user={user} />} />
+                <Route path="/repositories" element={<Repositories user={user} />} />
+                <Route path="/repositories/:id" element={<Repositories user={user} />} />
+                <Route path="/deployments/:id" element={<DeploymentDetail user={user} />} />
+                <Route path="/logs" element={<Logs />} />
+                <Route path="/tunnels" element={<Tunnels />} />
+                <Route path="/settings" element={<Settings user={user} />} />
+              </Routes>
+            </div>
           </main>
         </div>
       </BrowserRouter>

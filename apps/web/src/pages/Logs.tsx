@@ -39,19 +39,19 @@ export default function Logs() {
   }
 
   return (
-    <div className="space-y-4 h-full flex flex-col">
+    <div className="space-y-4 flex flex-col h-full">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Logs</h1>
+        <h1 className="text-xl lg:text-2xl font-bold tracking-tight">Logs</h1>
         <p className="text-muted-foreground text-sm mt-1">Real-time system logs and build output</p>
       </div>
 
       <Card>
         <CardContent className="p-4">
-          <div className="flex flex-wrap items-end gap-4">
-            <div className="space-y-1.5">
+          <div className="flex flex-col sm:flex-row sm:items-end gap-3 sm:gap-4">
+            <div className="space-y-1.5 flex-1">
               <Label className="text-xs">Category</Label>
               <Select value={filters.category || '__all__'} onValueChange={(v) => setFilters({ ...filters, category: v === '__all__' ? '' : v })}>
-                <SelectTrigger className="w-36 h-9"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-full sm:w-36 h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">All Categories</SelectItem>
                   <SelectItem value="build">Build</SelectItem>
@@ -62,10 +62,10 @@ export default function Logs() {
               </Select>
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 flex-1">
               <Label className="text-xs">Level</Label>
               <Select value={filters.level || '__all__'} onValueChange={(v) => setFilters({ ...filters, level: v === '__all__' ? '' : v })}>
-                <SelectTrigger className="w-32 h-9"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-full sm:w-32 h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">All Levels</SelectItem>
                   <SelectItem value="info">Info</SelectItem>
@@ -75,7 +75,7 @@ export default function Logs() {
               </Select>
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 flex-1">
               <Label className="text-xs">Show</Label>
               <Select value={String(filters.limit)} onValueChange={(v) => setFilters({ ...filters, limit: parseInt(v, 10) })}>
                 <SelectTrigger className="w-28 h-9"><SelectValue /></SelectTrigger>

@@ -87,13 +87,13 @@ export default function Repositories({ user }: { user: User }) {
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 lg:space-y-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Services</h1>
+          <h1 className="text-xl lg:text-2xl font-bold tracking-tight">Services</h1>
           <p className="text-muted-foreground text-sm mt-1">{filteredRepos.length} of {repos.length} services</p>
         </div>
-        {canManage && <Button onClick={() => setShowAddModal(true)}><Plus className="w-4 h-4" />Add Service</Button>}
+        {canManage && <Button onClick={() => setShowAddModal(true)} className="shrink-0"><Plus className="w-4 h-4" />Add Service</Button>}
       </div>
 
       {/* Filters */}
@@ -265,48 +265,48 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
   const tunnelUrl = repo.tunnel_url || repo.last_tunnel_url;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
+    <div className="space-y-4 lg:space-y-6">
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+        <div className="flex-1 min-w-0">
           <Button variant="ghost" size="sm" className="mb-3" asChild>
             <Link to="/repositories"><ArrowLeft className="w-4 h-4" />Back</Link>
           </Button>
-          <h1 className="text-2xl font-bold tracking-tight">{repo.full_name}</h1>
-          <div className="flex items-center gap-2 flex-wrap mt-2">
+          <h1 className="text-xl lg:text-2xl font-bold tracking-tight break-all">{repo.full_name}</h1>
+          <div className="flex flex-wrap items-center gap-2 mt-2">
             <DeployBadge status={repo.last_deployment_status || 'never'} />
             {tunnelUrl && (
               <a href={tunnelUrl} target="_blank" rel="noopener noreferrer"
-                className="text-xs text-blue-600 hover:underline flex items-center gap-1">
-                <ExternalLink className="w-3 h-3" />{tunnelUrl}
+                className="text-xs text-blue-600 hover:underline flex items-center gap-1 break-all">
+                <ExternalLink className="w-3 h-3 shrink-0" />{tunnelUrl}
               </a>
             )}
             {repo.tunnel_port && (
               <span className="font-mono text-xs text-muted-foreground">:{repo.tunnel_port}→:{repo.container_port ?? 3000}</span>
             )}
             {canAct && (
-              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleResetTunnel} disabled={resettingTunnel}>
+              <Button variant="ghost" size="sm" className="h-7 text-xs shrink-0" onClick={handleResetTunnel} disabled={resettingTunnel}>
                 {resettingTunnel ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
                 Reset Tunnel
               </Button>
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {user.role === 'admin' && (
-            <Button variant="outline" size="sm" onClick={handleDelete} disabled={deleting}>
+            <Button variant="outline" size="sm" onClick={handleDelete} disabled={deleting} className="shrink-0">
               {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
               Delete
             </Button>
           )}
           {canAct && (
-            <Button onClick={() => setShowDeployModal(true)} disabled={isDeploying}>
+            <Button onClick={() => setShowDeployModal(true)} disabled={isDeploying} className="shrink-0">
               {isDeploying ? <><Loader2 className="w-4 h-4 animate-spin" />Deploying...</> : <><Rocket className="w-4 h-4" />Deploy Now</>}
             </Button>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
         {/* Config */}
         <Card>
           <CardHeader className="pb-3">

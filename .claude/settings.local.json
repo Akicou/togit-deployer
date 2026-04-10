@@ -7,7 +7,13 @@
       "Bash(ls C:/Users/lyani/ClaudeProjects/github-repos/togit-deployer/*.md)",
       "WebFetch(domain:localtonet.com)",
       "mcp__web-reader__webReader",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(tailwind)",
+      "Bash(components)",
+      "Bash(vite\")",
+      "Bash(bun add:*)",
+      "Bash(bun run:*)",
+      "Bash(bun remove:*)"
     ]
   }
 }

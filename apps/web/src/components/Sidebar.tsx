@@ -17,6 +17,8 @@ import { Badge } from './ui/badge';
 interface SidebarProps {
   user: User;
   onLogout: () => void;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 const navItems = [
@@ -27,17 +29,29 @@ const navItems = [
   { path: '/settings', label: 'Settings', icon: Settings },
 ];
 
-export default function Sidebar({ user, onLogout }: SidebarProps) {
+export default function Sidebar({ user, onLogout, isOpen = true, onClose }: SidebarProps) {
   const navigate = useNavigate();
 
   async function handleLogout() {
     await api.post('/api/auth/logout');
+    onClose?.();
     onLogout();
     navigate('/login');
   }
 
+  function handleNavClick() {
+    if (window.innerWidth < 1024) {
+      onClose?.();
+    }
+  }
+
   return (
-    <aside className="fixed left-0 top-0 w-64 h-screen bg-card border-r border-border flex flex-col z-50">
+    <aside className={cn(
+      'fixed left-0 top-0 h-screen bg-card border-r border-border flex flex-col z-50 transition-transform',
+      'w-64',
+      'lg:translate-x-0',
+      isOpen ? 'translate-x-0' : '-translate-x-full'
+    )}>
       {/* Logo */}
       <div className="px-6 py-5 border-b border-border">
         <div className="flex items-center gap-3">
@@ -54,6 +68,7 @@ export default function Sidebar({ user, onLogout }: SidebarProps) {
           <NavLink
             key={item.path}
             to={item.path}
+            onClick={handleNavClick}
             className={({ isActive }) =>
               cn(
                 'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',

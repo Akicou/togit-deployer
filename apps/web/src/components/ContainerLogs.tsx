@@ -92,7 +92,7 @@ export default function ContainerLogs({ repoId, canExec }: ContainerLogsProps) {
 
   return (
     <Card>
-      <CardHeader className="pb-3 flex-row items-center justify-between">
+      <CardHeader className="pb-3 flex-row items-center justify-between gap-2">
         <CardTitle className="text-base flex items-center gap-2">
           <TerminalIcon className="w-4 h-4" />
           Container
@@ -100,14 +100,14 @@ export default function ContainerLogs({ repoId, canExec }: ContainerLogsProps) {
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'logs' | 'terminal')}>
           <TabsList className="h-7">
             <TabsTrigger value="logs" className="text-xs">Logs</TabsTrigger>
-            {canExec && <TabsTrigger value="terminal" className="text-xs">Terminal</TabsTrigger>}
+            {canExec && <TabsTrigger value="terminal" className="text-xs hidden sm:flex">Terminal</TabsTrigger>}
           </TabsList>
         </Tabs>
       </CardHeader>
       <CardContent className="p-0">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'logs' | 'terminal')}>
           <TabsContent value="logs" className="m-0">
-            <div className="flex items-center justify-between p-2 border-b bg-muted/30">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2 border-b bg-muted/30 gap-2">
               <p className="text-xs text-muted-foreground">Live container logs</p>
               <Button
                 variant="ghost"
@@ -118,7 +118,7 @@ export default function ContainerLogs({ repoId, canExec }: ContainerLogsProps) {
                 {following ? <><Square className="w-3 h-3" />Pause</> : <><Play className="w-3 h-3" />Follow</>}
               </Button>
             </div>
-            <div className="h-[400px] bg-zinc-950 p-3 font-mono text-xs overflow-y-auto">
+            <div className="h-[300px] sm:h-[400px] bg-zinc-950 p-2 sm:p-3 font-mono text-xs overflow-y-auto">
               {loading ? (
                 <div className="flex items-center justify-center h-full text-muted-foreground">
                   <Loader2 className="w-4 h-4 animate-spin mr-2" />Loading logs...
@@ -204,7 +204,7 @@ function Terminal({ repoId }: { repoId: number }) {
           {connected ? 'Connected' : 'Disconnected'}
         </p>
       </div>
-      <div className="h-[400px] bg-zinc-950 p-3 font-mono text-xs overflow-y-auto">
+      <div className="h-[300px] sm:h-[400px] bg-zinc-950 p-2 sm:p-3 font-mono text-xs overflow-y-auto">
         {error ? (
           <div className="text-red-400">{error}</div>
         ) : (

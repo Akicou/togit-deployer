@@ -82,14 +82,14 @@ export default function Dashboard({ user }: DashboardProps) {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 lg:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+        <h1 className="text-xl lg:text-2xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-muted-foreground text-sm mt-1">Welcome back, {user.github_login}</p>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
         {statCards.map(({ label, value, link, icon: Icon }) => (
           <Card
             key={label}
@@ -172,12 +172,12 @@ export default function Dashboard({ user }: DashboardProps) {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
         {/* Recent Deployments */}
         <Card className="lg:col-span-2">
-          <CardHeader className="pb-3 flex-row items-center justify-between">
+          <CardHeader className="pb-3 flex-row items-center justify-between gap-2">
             <CardTitle className="text-base">Recent Deployments</CardTitle>
-            <Button variant="ghost" size="sm" asChild>
+            <Button variant="ghost" size="sm" className="shrink-0" asChild>
               <Link to="/repositories">View All →</Link>
             </Button>
           </CardHeader>
@@ -187,34 +187,36 @@ export default function Dashboard({ user }: DashboardProps) {
             ) : deployments.length === 0 ? (
               <p className="text-center text-muted-foreground py-10 text-sm">No deployments yet</p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Repository</TableHead>
-                    <TableHead>Ref</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Time</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {deployments.slice(0, 10).map((deployment) => (
-                    <TableRow key={deployment.id}>
-                      <TableCell>
-                        <Link to={`/repositories/${deployment.repo_id}`} className="font-medium hover:underline text-foreground">
-                          {deployment.repo_full_name}
-                        </Link>
-                      </TableCell>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
-                        {deployment.ref.substring(0, 8)}
-                      </TableCell>
-                      <TableCell><DeployBadge status={deployment.status} /></TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {new Date(deployment.started_at).toLocaleString()}
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table className="min-w-[600px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Repository</TableHead>
+                      <TableHead>Ref</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Time</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {deployments.slice(0, 10).map((deployment) => (
+                      <TableRow key={deployment.id}>
+                        <TableCell className="min-w-[180px]">
+                          <Link to={`/repositories/${deployment.repo_id}`} className="font-medium hover:underline text-foreground">
+                            {deployment.repo_full_name}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+                          {deployment.ref.substring(0, 8)}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap"><DeployBadge status={deployment.status} /></TableCell>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                          {new Date(deployment.started_at).toLocaleDateString()}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             )}
           </CardContent>
         </Card>
