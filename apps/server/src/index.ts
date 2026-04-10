@@ -9,7 +9,7 @@ import { checkDockerRunning, cleanupInterruptedBuilds, pruneUnusedImages } from 
 import { startScheduler, stopScheduler } from './daemon/scheduler.js';
 import { cleanupExpiredOAuthStates } from './utils/oauth-states.js';
 import { parseCookies } from './utils/cookie.js';
-import { handleWSOpen, handleWSClose } from './logger/index.js';
+import { handleWSOpen, handleWSClose, handleWSMessage } from './logger/index.js';
 import type { WSData } from './logger/index.js';
 import { getSession } from './github/oauth.js';
 import { logSystem, logError, logNetwork } from './logger/index.js';
@@ -261,6 +261,22 @@ async function handleRequest(req: Request): Promise<Response> {
       const deploymentId = parseInt(params.id, 10);
       if (isNaN(deploymentId)) return addCors(Response.json({ error: 'Invalid deployment ID' }, { status: 400 }));
       return addCors(await deploymentsApi.getDeploymentLogs(req, deploymentId));
+    }
+
+    // GET /api/repos/:id/container/logs
+    params = matchRoute('/api/repos/:id/container/logs', path);
+    if (params && req.method === 'GET') {
+      const repoId = parseInt(params.id, 10);
+      if (isNaN(repoId)) return addCors(Response.json({ error: 'Invalid repo ID' }, { status: 400 }));
+      return addCors(await deploymentsApi.getContainerLogs(req, repoId, user));
+    }
+
+    // GET /api/repos/:id/container/exec
+    params = matchRoute('/api/repos/:id/container/exec', path);
+    if (params && req.method === 'GET') {
+      const repoId = parseInt(params.id, 10);
+      if (isNaN(repoId)) return addCors(Response.json({ error: 'Invalid repo ID' }, { status: 400 }));
+      return addCors(await deploymentsApi.createContainerExec(req, repoId, user));
     }
 
     if (path === '/api/deployments/recent' && req.method === 'GET') {
@@ -563,6 +579,16 @@ const server = serve<WSData>({
       return;
     }
 
+    // Handle WebSocket upgrade for /ws/exec/:repoId
+    const execParams = matchRoute('/ws/exec/:repoId', url.pathname);
+    if (execParams && url.pathname.startsWith('/ws/exec/')) {
+      const repoId = parseInt(execParams.repoId, 10);
+      if (!isNaN(repoId)) {
+        server.upgrade(req, { data: { type: 'container-exec', repoId } });
+        return;
+      }
+    }
+
     const response = await handleRequest(req);
 
     if (response.status !== 302 && response.status !== 301) {
@@ -580,7 +606,7 @@ const server = serve<WSData>({
   websocket: {
     open: handleWSOpen,
     close: handleWSClose,
-    message(_ws, _message) {},
+    message: handleWSMessage,
   },
 });
 

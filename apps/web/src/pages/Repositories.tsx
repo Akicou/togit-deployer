@@ -5,6 +5,7 @@ import RepoCard from '../components/RepoCard';
 import DeployBadge from '../components/DeployBadge';
 import { useDeployments } from '../hooks/useDeployments';
 import { useToast } from '../components/Toast';
+import ContainerLogs from '../components/ContainerLogs';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -440,6 +441,11 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
           </CardContent>
         </Card>
       </div>
+
+      {/* Container Logs & Terminal */}
+      {repo.last_deployment_status === 'running' && (
+        <ContainerLogs repoId={repo.id} canExec={canAct} />
+      )}
 
       {/* Deploy modal */}
       <Dialog open={showDeployModal} onOpenChange={setShowDeployModal}>

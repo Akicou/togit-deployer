@@ -222,3 +222,114 @@ export async function getTunnelStatus(req: Request, user: User, repoId: string):
   const result = await getActiveTunnelStatusByRepo(parseInt(repoId, 10));
   return Response.json(result);
 }
+
+export async function getContainerLogs(req: Request, repoId: number, user: User): Promise<Response> {
+  try {
+    const result = await query<Repository>(
+      'SELECT * FROM repositories WHERE id = $1',
+      [repoId]
+    );
+
+    if (result.rows.length === 0) {
+      return Response.json({ error: 'Repository not found' }, { status: 404 });
+    }
+
+    const repo = result.rows[0];
+
+    if (repo.project_id) {
+      const { checkProjectAccess } = await import('./projects.js');
+      const allowed = await checkProjectAccess(user, repo.project_id, 'view');
+      if (!allowed) return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const { getContainerForRepo } = await import('../daemon/deployer.js');
+    const container = await getContainerForRepo(repoId);
+
+    if (!container) {
+      return Response.json({ error: 'No running container found for this repository' }, { status: 404 });
+    }
+
+    const url = new URL(req.url);
+    const tail = parseInt(url.searchParams.get('tail') || '100', 10);
+    const follow = url.searchParams.get('follow') === 'true';
+
+    const logs = await container.logs({
+      stdout: true,
+      stderr: true,
+      tail,
+      follow,
+    });
+
+    if (follow) {
+      const textEncoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          logs.on('data', (chunk: Buffer) => {
+            controller.enqueue(textEncoder.encode(chunk.toString()));
+          });
+          logs.on('end', () => {
+            controller.close();
+          });
+          logs.on('error', (err: Error) => {
+            controller.error(err);
+          });
+        },
+      });
+
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/plain',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      });
+    }
+
+    const chunks: Buffer[] = [];
+    for await (const chunk of logs) {
+      chunks.push(chunk);
+    }
+
+    return new Response(Buffer.concat(chunks), {
+      headers: {
+        'Content-Type': 'text/plain',
+      },
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return Response.json({ error: `Failed to get container logs: ${errorMessage}` }, { status: 500 });
+  }
+}
+
+export async function createContainerExec(req: Request, repoId: number, user: User): Promise<Response> {
+  try {
+    const result = await query<Repository>(
+      'SELECT * FROM repositories WHERE id = $1',
+      [repoId]
+    );
+
+    if (result.rows.length === 0) {
+      return Response.json({ error: 'Repository not found' }, { status: 404 });
+    }
+
+    const repo = result.rows[0];
+
+    if (repo.project_id) {
+      const { checkProjectAccess } = await import('./projects.js');
+      const allowed = await checkProjectAccess(user, repo.project_id, 'deploy');
+      if (!allowed) return Response.json({ error: 'Requires deploy permission to exec into container' }, { status: 403 });
+    }
+
+    const { getContainerForRepo } = await import('../daemon/deployer.js');
+    const container = await getContainerForRepo(repoId);
+
+    if (!container) {
+      return Response.json({ error: 'No running container found for this repository' }, { status: 404 });
+    }
+
+    return Response.json({ success: true, containerId: container.id });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return Response.json({ error: `Failed to prepare container exec: ${errorMessage}` }, { status: 500 });
+  }
+}

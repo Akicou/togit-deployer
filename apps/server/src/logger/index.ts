@@ -2,25 +2,40 @@ import { query } from '../db/client.js';
 import type { ServerWebSocket } from 'bun';
 import type { Log, WebSocketLogMessage } from '../types.js';
 
-export type WSData = { key: number | 'global' };
+export type WSData = { key: number | 'global' } | { type: 'container-exec'; repoId: number };
 
 // Store active WebSocket connections by deployment_id
 const wsConnections = new Map<number | 'global', Set<ServerWebSocket<WSData>>>();
+// Store container exec WebSocket connections
+const execConnections = new Map<number, ServerWebSocket<WSData>>();
 
 export function handleWSOpen(ws: ServerWebSocket<WSData>): void {
-  const { key } = ws.data;
-  if (!wsConnections.has(key)) {
-    wsConnections.set(key, new Set());
+  if ('type' in ws.data && ws.data.type === 'container-exec') {
+    // Container exec connection
+    execConnections.set(ws.data.repoId, ws);
+    console.log(`WebSocket exec connected: repoId=${ws.data.repoId}`);
+  } else {
+    // Regular log connection
+    const { key } = ws.data;
+    if (!wsConnections.has(key)) {
+      wsConnections.set(key, new Set());
+    }
+    wsConnections.get(key)!.add(ws);
+    console.log(`WebSocket connected: deploymentId=${key}, total=${wsConnections.get(key)!.size}`);
   }
-  wsConnections.get(key)!.add(ws);
-  console.log(`WebSocket connected: deploymentId=${key}, total=${wsConnections.get(key)!.size}`);
 }
 
 export function handleWSClose(ws: ServerWebSocket<WSData>): void {
-  const { key } = ws.data;
-  wsConnections.get(key)?.delete(ws);
-  if (wsConnections.get(key)?.size === 0) {
-    wsConnections.delete(key);
+  if ('type' in ws.data && ws.data.type === 'container-exec') {
+    // Container exec connection closing
+    execConnections.delete(ws.data.repoId);
+  } else {
+    // Regular log connection closing
+    const { key } = ws.data;
+    wsConnections.get(key)?.delete(ws);
+    if (wsConnections.get(key)?.size === 0) {
+      wsConnections.delete(key);
+    }
   }
 }
 
@@ -124,4 +139,54 @@ export function logWarn(message: string, options?: Partial<Pick<Log, 'deployment
 
 export function logError(message: string, options?: Partial<Pick<Log, 'deployment_id' | 'repo_id'>> & { meta?: Record<string, unknown> }) {
   return log('system', 'error', message, { ...options, meta: options?.meta });
+}
+
+export async function handleWSMessage(ws: ServerWebSocket<WSData>, message: Uint8Array): Promise<void> {
+  if ('type' in ws.data && ws.data.type === 'container-exec') {
+    // Handle container exec messages
+    try {
+      const { getContainerForRepo } = await import('../daemon/deployer.js');
+      const container = await getContainerForRepo(ws.data.repoId);
+
+      if (!container) {
+        ws.send(JSON.stringify({ type: 'error', message: 'No running container found' }));
+        ws.close();
+        return;
+      }
+
+      const command = new TextDecoder().decode(message).trim();
+      
+      // Execute command in container
+      const exec = await container.exec({
+        Cmd: ['sh', '-c', command],
+        AttachStdin: true,
+        AttachStdout: true,
+        AttachStderr: true,
+        Tty: false,
+      });
+
+      const output = await exec.start({
+        Detach: false,
+        Tty: false,
+      });
+
+      const textEncoder = new TextEncoder();
+      
+      output.on('stdout', (chunk: Buffer) => {
+        ws.send(textEncoder.encode(chunk.toString()));
+      });
+      
+      output.on('stderr', (chunk: Buffer) => {
+        ws.send(textEncoder.encode(chunk.toString()));
+      });
+      
+      output.on('end', () => {
+        ws.send(textEncoder.encode('\r\n$ '));
+      });
+      
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      ws.send(JSON.stringify({ type: 'error', message: errorMsg }));
+    }
+  }
 }

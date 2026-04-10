@@ -820,3 +820,37 @@ export async function pruneUnusedImages(): Promise<{ pruned: number }> {
   logDocker(`Pruned ${pruned} unused images`);
   return { pruned };
 }
+
+/**
+ * Get the running container for a repository.
+ * Returns null if no container is running.
+ */
+export async function getContainerForRepo(repoId: number): Promise<Docker.Container | null> {
+  try {
+    const result = await query<Deployment>(
+      `SELECT container_id FROM deployments 
+       WHERE repo_id = $1 AND status = 'running' 
+       ORDER BY id DESC LIMIT 1`,
+      [repoId]
+    );
+
+    if (result.rows.length === 0 || !result.rows[0].container_id) {
+      return null;
+    }
+
+    const container = docker.getContainer(result.rows[0].container_id);
+    const info = await container.inspect() as any;
+
+    if (!info.State.Running) {
+      return null;
+    }
+
+    return container;
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    if (!errorMsg.includes('No such container')) {
+      logError(`Error getting container for repo ${repoId}: ${errorMsg}`);
+    }
+    return null;
+  }
+}
