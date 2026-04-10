@@ -19,6 +19,8 @@ export default function Settings({ user }: SettingsProps) {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [patInput, setPatInput] = useState('');
+  const [savingPat, setSavingPat] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([]);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -100,6 +102,45 @@ export default function Settings({ user }: SettingsProps) {
       setMessage({ type: 'error', text: 'Failed to save settings' });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSavePat() {
+    if (!patInput.trim()) return;
+    setSavingPat(true);
+    setMessage(null);
+    try {
+      const response = await api.patch('/api/settings', { github_pat: patInput.trim() });
+      if (response.ok) {
+        setSettings((s) => ({ ...s, github_pat_set: true }));
+        setPatInput('');
+        setMessage({ type: 'success', text: 'GitHub PAT saved' });
+      } else {
+        setMessage({ type: 'error', text: 'Failed to save PAT' });
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to save PAT' });
+    } finally {
+      setSavingPat(false);
+    }
+  }
+
+  async function handleClearPat() {
+    setSavingPat(true);
+    setMessage(null);
+    try {
+      const response = await api.patch('/api/settings', { github_pat: null });
+      if (response.ok) {
+        setSettings((s) => ({ ...s, github_pat_set: false }));
+        setPatInput('');
+        setMessage({ type: 'success', text: 'GitHub PAT cleared' });
+      } else {
+        setMessage({ type: 'error', text: 'Failed to clear PAT' });
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to clear PAT' });
+    } finally {
+      setSavingPat(false);
     }
   }
 
@@ -276,6 +317,53 @@ export default function Settings({ user }: SettingsProps) {
               <p style={{ color: '#888', fontSize: 11, marginTop: 8, fontWeight: 600 }}>
                 How often to check GitHub for new releases or commits
               </p>
+            </div>
+
+            <div style={{ marginBottom: 24, borderTop: '2px solid #e5e5e5', paddingTop: 20 }}>
+              <label style={{ display: 'block', color: '#666', fontSize: 11, marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                GitHub PAT (Fallback Token)
+              </label>
+              {settings.github_pat_set && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '8px 12px', border: '2px solid #27ae60', background: '#f0fff4' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#27ae60', flex: 1 }}>Token configured</span>
+                  <button
+                    onClick={handleClearPat}
+                    disabled={savingPat}
+                    style={{ padding: '4px 10px', border: '2px solid #c0392b', background: 'transparent', color: '#c0392b', fontWeight: 800, cursor: 'pointer', fontSize: 11, textTransform: 'uppercase' }}
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+              <input
+                type="password"
+                value={patInput}
+                onChange={(e) => setPatInput(e.target.value)}
+                placeholder={settings.github_pat_set ? 'Paste new token to replace...' : 'ghp_xxxxxxxxxxxxxxxxxxxx'}
+                style={inputStyle}
+              />
+              <p style={{ color: '#888', fontSize: 11, marginTop: 8, fontWeight: 600 }}>
+                Used as a fallback when a user's OAuth token is missing or invalid. Needs <code>repo</code> scope.
+              </p>
+              <button
+                onClick={handleSavePat}
+                disabled={savingPat || !patInput.trim()}
+                style={{
+                  marginTop: 10,
+                  width: '100%',
+                  padding: '10px',
+                  border: '2px solid #1a1a1a',
+                  background: savingPat || !patInput.trim() ? '#f5f5f5' : '#1a1a1a',
+                  color: savingPat || !patInput.trim() ? '#999' : '#ffffff',
+                  fontWeight: 800,
+                  cursor: savingPat || !patInput.trim() ? 'not-allowed' : 'pointer',
+                  fontSize: 12,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                }}
+              >
+                {savingPat ? 'Saving...' : 'Save PAT'}
+              </button>
             </div>
 
             <button

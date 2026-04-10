@@ -1,5 +1,6 @@
 import { query } from '../db/client.js';
 import type { User, UserRepoPermission } from '../types.js';
+import { encrypt, decryptAccessToken } from '../github/oauth.js';
 import { z } from 'zod';
 
 const updateUserRoleSchema = z.object({
@@ -143,7 +144,12 @@ export async function getSettings(req: Request): Promise<Response> {
 
   const settings: Record<string, unknown> = {};
   for (const row of result.rows) {
-    settings[row.key] = row.value;
+    if (row.key === 'github_pat') {
+      // Never expose the token value; only indicate whether one is configured
+      settings['github_pat_set'] = !!row.value;
+    } else {
+      settings[row.key] = row.value;
+    }
   }
 
   return Response.json({ settings });
@@ -176,21 +182,43 @@ export async function updateSettings(req: Request, currentUser: User): Promise<R
   let paramIndex = 1;
 
   const bodyObj = body as Record<string, unknown>;
+  const deleteKeys: string[] = [];
+
   for (const [key, value] of Object.entries(bodyObj)) {
-    updates.push(`($${paramIndex++}, $${paramIndex++})`);
-    values.push(key, JSON.stringify(value));
+    if (key === 'github_pat') {
+      if (value === null) {
+        // null means clear the PAT
+        deleteKeys.push(key);
+      } else if (typeof value === 'string' && value.trim()) {
+        // Encrypt the PAT before storing
+        updates.push(`($${paramIndex++}, $${paramIndex++})`);
+        values.push(key, JSON.stringify(encrypt(value.trim())));
+      }
+    } else {
+      updates.push(`($${paramIndex++}, $${paramIndex++})`);
+      values.push(key, JSON.stringify(value));
+    }
   }
 
-  if (updates.length === 0) {
+  if (updates.length === 0 && deleteKeys.length === 0) {
     return Response.json({ error: 'No settings provided' }, { status: 400 });
   }
 
   try {
-    await query(
-      `INSERT INTO settings (key, value) VALUES ${updates.join(', ')}
-       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
-      values
-    );
+    if (deleteKeys.length > 0) {
+      await query(
+        `DELETE FROM settings WHERE key = ANY($1)`,
+        [deleteKeys]
+      );
+    }
+
+    if (updates.length > 0) {
+      await query(
+        `INSERT INTO settings (key, value) VALUES ${updates.join(', ')}
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+        values
+      );
+    }
 
     // If poll_interval_seconds was updated, restart scheduler
     if (bodyObj.poll_interval_seconds !== undefined) {

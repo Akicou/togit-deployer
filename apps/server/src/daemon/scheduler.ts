@@ -27,23 +27,38 @@ export async function getAllEnabledRepos(): Promise<Repository[]> {
   return result.rows;
 }
 
+async function getFallbackPAT(): Promise<string> {
+  const result = await query<{ value: string }>(
+    `SELECT value FROM settings WHERE key = 'github_pat'`
+  );
+  if (result.rows.length === 0 || !result.rows[0].value) return '';
+  // value is stored as a JSON-encoded encrypted string (e.g. "\"salt:iv:tag:cipher\"")
+  const encrypted = typeof result.rows[0].value === 'string'
+    ? result.rows[0].value
+    : JSON.stringify(result.rows[0].value);
+  return decryptAccessToken(encrypted);
+}
+
 export async function getRepoAccessToken(repoId: number): Promise<string> {
   const result = await query<{ github_access_token: string }>(
-    `SELECT u.github_access_token 
+    `SELECT u.github_access_token
      FROM users u
      JOIN repositories r ON r.added_by = u.id
      WHERE r.id = $1`,
     [repoId]
   );
 
-  if (result.rows.length === 0 || !result.rows[0].github_access_token) {
-    return '';
-  }
+  const userToken = result.rows.length > 0 && result.rows[0].github_access_token
+    ? decryptAccessToken(result.rows[0].github_access_token)
+    : '';
 
-  return decryptAccessToken(result.rows[0].github_access_token);
+  if (userToken) return userToken;
+
+  // Fall back to global PAT if user token is unavailable
+  return getFallbackPAT();
 }
 
-export async function checkForUpdates(repo: Repository): Promise<{ hasUpdate: boolean; ref: string; refType: 'release' | 'commit' }> {
+export async function checkForUpdates(repo: Repository, accessTokenOverride?: string): Promise<{ hasUpdate: boolean; ref: string; refType: 'release' | 'commit' }> {
   // Skip if a deployment is actively being created (pending/building).
   // 'running' means the app is live and should NOT block future deployments.
   const inProgress = await query<{ id: number }>(
@@ -63,7 +78,7 @@ export async function checkForUpdates(repo: Repository): Promise<{ hasUpdate: bo
   );
   const hasAnyDeployment = hasHistory.rows[0]?.count > 0;
 
-  const accessToken = await getRepoAccessToken(repo.id);
+  const accessToken = accessTokenOverride ?? await getRepoAccessToken(repo.id);
 
   if (repo.deploy_mode === 'release') {
     // Check for new releases
@@ -161,7 +176,36 @@ export async function runSchedulerTick(): Promise<void> {
         }
       } catch (error) {
         if (error instanceof GitHubAuthError) {
-          logWarn(`Auth failed for ${repo.full_name}: ${error.message}`, { repo_id: repo.id });
+          // OAuth token invalid — retry once with the global fallback PAT
+          const fallback = await getFallbackPAT();
+          if (fallback) {
+            logWarn(
+              `OAuth token invalid for ${repo.full_name}, retrying with fallback PAT`,
+              { repo_id: repo.id }
+            );
+            try {
+              const { hasUpdate, ref, refType } = await checkForUpdates(repo, fallback);
+              if (hasUpdate) {
+                const hasLock = await acquireDeployLock(repo.id);
+                if (hasLock) {
+                  try {
+                    const repoEnvVars = typeof repo.deployment_env_vars === 'string'
+                      ? JSON.parse(repo.deployment_env_vars)
+                      : (repo.deployment_env_vars || {});
+                    clearRepoCache(repo.owner, repo.name);
+                    await deploy(repo, ref, refType, null, repoEnvVars);
+                  } finally {
+                    releaseDeployLock(repo.id);
+                  }
+                }
+              }
+            } catch (retryError) {
+              const msg = retryError instanceof Error ? retryError.message : String(retryError);
+              logError(`Fallback PAT also failed for ${repo.full_name}: ${msg}`, { repo_id: repo.id });
+            }
+          } else {
+            logWarn(`Auth failed for ${repo.full_name}: ${error.message}`, { repo_id: repo.id });
+          }
         } else {
           const errorMessage = error instanceof Error ? error.message : String(error);
           logError(`Error checking repo ${repo.full_name}: ${errorMessage}`, { repo_id: repo.id });

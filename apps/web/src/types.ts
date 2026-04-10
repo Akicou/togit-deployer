@@ -99,6 +99,7 @@ export interface SystemStatus {
 
 export interface Settings {
   poll_interval_seconds: number;
+  github_pat_set?: boolean;
 }
 
 export interface AccessRequest {
