@@ -25,6 +25,8 @@ export default function Repositories({ user }: RepositoriesProps) {
   const toast = useToast();
 
   const canManage = user.role === 'admin' || user.role === 'deployer';
+  void showAddModal;
+  void setShowAddModal;
 
   useEffect(() => {
     loadRepos();
@@ -112,48 +114,12 @@ export default function Repositories({ user }: RepositoriesProps) {
       >
         <div>
           <h1 style={{ fontSize: 36, fontWeight: 800, color: '#1a1a1a', marginBottom: 8, letterSpacing: '-1px' }}>
-            REPOSITORIES
+            SERVICES
           </h1>
           <p style={{ color: '#666', fontWeight: 600, fontSize: 14 }}>
-            {repos.length} {repos.length === 1 ? 'repository' : 'repositories'} configured
+            {repos.length} {repos.length === 1 ? 'service' : 'services'} configured · create new services from a project page
           </p>
         </div>
-
-        {canManage && (
-          <button
-            onClick={() => setShowAddModal(true)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '14px 24px',
-              border: '3px solid #1a1a1a',
-              background: '#1a1a1a',
-              color: '#ffffff',
-              fontWeight: 800,
-              cursor: 'pointer',
-              fontSize: 13,
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              boxShadow: '6px 6px 0 #1a1a1a',
-              transition: 'all 0.1s ease',
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.boxShadow = '3px 3px 0 #1a1a1a';
-              e.currentTarget.style.transform = 'translate(3px, 3px)';
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.boxShadow = '6px 6px 0 #1a1a1a';
-              e.currentTarget.style.transform = 'translate(0, 0)';
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            Add Repository
-          </button>
-        )}
       </motion.div>
 
       {loading ? (
@@ -176,29 +142,10 @@ export default function Repositories({ user }: RepositoriesProps) {
               <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
             </svg>
           </div>
-          <h3 style={{ color: '#1a1a1a', marginBottom: 8, fontWeight: 800, fontSize: 20, textTransform: 'uppercase' }}>No repositories yet</h3>
+          <h3 style={{ color: '#1a1a1a', marginBottom: 8, fontWeight: 800, fontSize: 20, textTransform: 'uppercase' }}>No services yet</h3>
           <p style={{ color: '#666', marginBottom: 28, fontWeight: 600 }}>
-            Add a GitHub repository to start deploying
+            Create a service from the relevant project page to start deploying
           </p>
-          {canManage && (
-            <button
-              onClick={() => setShowAddModal(true)}
-              style={{
-                padding: '14px 28px',
-                border: '3px solid #1a1a1a',
-                background: '#1a1a1a',
-                color: '#ffffff',
-                fontWeight: 800,
-                cursor: 'pointer',
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-                boxShadow: '4px 4px 0 #1a1a1a',
-                transition: 'all 0.1s ease',
-              }}
-            >
-              Add Repository
-            </button>
-          )}
         </motion.div>
       ) : (
         <div style={{
@@ -224,12 +171,6 @@ export default function Repositories({ user }: RepositoriesProps) {
       )}
 
       <AnimatePresence>
-        {showAddModal && (
-          <AddRepoModal
-            onClose={() => setShowAddModal(false)}
-            onAdd={loadRepos}
-          />
-        )}
         {showDeployModal && (
           <DeployModal
             showDeployModal={showDeployModal}
@@ -1321,6 +1262,8 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
     </motion.div>
   );
 }
+
+void AddRepoModal;
 
 function RawEditorModal({
   envVars,

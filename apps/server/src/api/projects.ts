@@ -18,17 +18,10 @@ const processRequestSchema = z.object({
   note: z.string().optional(),
 });
 
-export async function checkProjectAccess(
-  user: User,
-  projectId: number,
-  permission: 'view' | 'deploy' = 'view'
-): Promise<boolean> {
+export async function checkProjectAccess(user: User, projectId: number, permission: 'view' | 'deploy' = 'view'): Promise<boolean> {
   if (user.role === 'admin') return true;
 
-  const created = await query<{ created_by: number | null }>(
-    'SELECT created_by FROM projects WHERE id = $1',
-    [projectId]
-  );
+  const created = await query<{ created_by: number | null }>('SELECT created_by FROM projects WHERE id = $1', [projectId]);
   if (created.rows.length === 0) return false;
   if (created.rows[0].created_by === user.id) return true;
 
@@ -41,56 +34,46 @@ export async function checkProjectAccess(
 }
 
 export async function listProjects(req: Request, user: User): Promise<Response> {
-  const url = new URL(req.url);
-  const includeAll = url.searchParams.get('all') === 'true';
-
-  let sql = `
-    SELECT p.*, u.github_login AS created_by_login,
-           (SELECT COUNT(*) FROM repositories r WHERE r.project_id = p.id) AS service_count,
-           (SELECT COUNT(*) FROM service_tunnels st
-             JOIN repositories r ON r.id = st.repo_id
-            WHERE r.project_id = p.id AND st.status = 'active') AS active_tunnel_count
-    FROM projects p
-    LEFT JOIN users u ON u.id = p.created_by
-  `;
-  const params: unknown[] = [];
-
-  if (user.role !== 'admin' || !includeAll) {
-    sql += `
-      WHERE p.created_by = $1
-         OR EXISTS (
-           SELECT 1 FROM user_project_permissions upp
-           WHERE upp.project_id = p.id AND upp.user_id = $1 AND upp.can_view = true
-         )
-    `;
-    params.push(user.id);
-  }
-
-  sql += ' ORDER BY p.created_at DESC';
-  const result = await query<Project>(sql, params);
+  const params: unknown[] = [user.id, user.id, user.id, user.id];
+  const result = await query<Project & { has_access: boolean; can_deploy: boolean; access_request_pending: boolean }>(
+    `SELECT p.*, u.github_login AS created_by_login,
+            (SELECT COUNT(*) FROM repositories r WHERE r.project_id = p.id) AS service_count,
+            (SELECT COUNT(*) FROM service_tunnels st JOIN repositories r ON r.id = st.repo_id WHERE r.project_id = p.id AND st.status = 'active') AS active_tunnel_count,
+            CASE
+              WHEN p.created_by = $1 THEN true
+              WHEN EXISTS (SELECT 1 FROM user_project_permissions upp WHERE upp.project_id = p.id AND upp.user_id = $2 AND upp.can_view = true) THEN true
+              ELSE false
+            END AS has_access,
+            CASE
+              WHEN p.created_by = $3 THEN true
+              WHEN EXISTS (SELECT 1 FROM user_project_permissions upp WHERE upp.project_id = p.id AND upp.user_id = $4 AND upp.can_deploy = true) THEN true
+              ELSE false
+            END AS can_deploy,
+            EXISTS (
+              SELECT 1 FROM project_access_requests par
+              WHERE par.project_id = p.id AND par.user_id = $1 AND par.status = 'pending'
+            ) AS access_request_pending
+     FROM projects p
+     LEFT JOIN users u ON u.id = p.created_by
+     ORDER BY CASE WHEN p.name = 'default-project' THEN 0 ELSE 1 END, p.created_at ASC`,
+    params
+  );
   return Response.json({ projects: result.rows });
 }
 
 export async function createProject(req: Request, user: User): Promise<Response> {
-  if (user.role === 'viewer') {
-    return Response.json({ error: 'Viewers cannot create projects' }, { status: 403 });
-  }
+  if (user.role === 'viewer') return Response.json({ error: 'Viewers cannot create projects' }, { status: 403 });
 
   let body: unknown;
   try { body = await req.json(); } catch {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
-
   const parsed = createProjectSchema.safeParse(body);
-  if (!parsed.success) {
-    return Response.json({ error: parsed.error.message }, { status: 400 });
-  }
+  if (!parsed.success) return Response.json({ error: parsed.error.message }, { status: 400 });
 
   try {
     const result = await query<Project>(
-      `INSERT INTO projects (name, description, created_by)
-       VALUES ($1, $2, $3)
-       RETURNING *`,
+      `INSERT INTO projects (name, description, created_by) VALUES ($1, $2, $3) RETURNING *`,
       [parsed.data.name, parsed.data.description || null, user.id]
     );
     return Response.json({ project: result.rows[0] }, { status: 201 });
@@ -100,60 +83,70 @@ export async function createProject(req: Request, user: User): Promise<Response>
 }
 
 export async function getProject(req: Request, user: User, projectId: number): Promise<Response> {
-  const allowed = await checkProjectAccess(user, projectId, 'view');
-  if (!allowed) return Response.json({ error: 'Forbidden' }, { status: 403 });
-
-  const projectResult = await query<Project & { created_by_login: string }>(
-    `SELECT p.*, u.github_login AS created_by_login
+  const projectResult = await query<Project & { created_by_login: string; has_access: boolean; can_deploy: boolean; access_request_pending: boolean }>(
+    `SELECT p.*, u.github_login AS created_by_login,
+            CASE
+              WHEN $2 = 'admin' THEN true
+              WHEN p.created_by = $1 THEN true
+              WHEN EXISTS (SELECT 1 FROM user_project_permissions upp WHERE upp.project_id = p.id AND upp.user_id = $1 AND upp.can_view = true) THEN true
+              ELSE false
+            END AS has_access,
+            CASE
+              WHEN $2 = 'admin' THEN true
+              WHEN p.created_by = $1 THEN true
+              WHEN EXISTS (SELECT 1 FROM user_project_permissions upp WHERE upp.project_id = p.id AND upp.user_id = $1 AND upp.can_deploy = true) THEN true
+              ELSE false
+            END AS can_deploy,
+            EXISTS (
+              SELECT 1 FROM project_access_requests par
+              WHERE par.project_id = p.id AND par.user_id = $1 AND par.status = 'pending'
+            ) AS access_request_pending
      FROM projects p
      LEFT JOIN users u ON u.id = p.created_by
-     WHERE p.id = $1`,
-    [projectId]
+     WHERE p.id = $3`,
+    [user.id, user.role, projectId]
   );
-  if (projectResult.rows.length === 0) {
-    return Response.json({ error: 'Project not found' }, { status: 404 });
-  }
+  if (projectResult.rows.length === 0) return Response.json({ error: 'Project not found' }, { status: 404 });
 
-  const services = await query(
-    `SELECT r.*,
-            d.ref AS last_deployed_ref,
-            d.ref_type AS last_deployed_ref_type,
-            d.status AS last_deployment_status,
-            st.tunnel_url AS active_tunnel_url
-     FROM repositories r
-     LEFT JOIN LATERAL (
-       SELECT ref, ref_type, status
-       FROM deployments
-       WHERE repo_id = r.id
-       ORDER BY started_at DESC
-       LIMIT 1
-     ) d ON true
-     LEFT JOIN LATERAL (
-       SELECT tunnel_url
-       FROM service_tunnels
-       WHERE repo_id = r.id AND status = 'active'
-       ORDER BY created_at DESC
-       LIMIT 1
-     ) st ON true
-     WHERE r.project_id = $1
-     ORDER BY r.created_at DESC`,
-    [projectId]
-  );
+  const project = projectResult.rows[0];
+  const canViewServices = !!project.has_access;
+  const isManager = user.role === 'admin' || project.created_by === user.id;
 
-  const requests = await query<ProjectAccessRequest & { github_login: string }>(
-    `SELECT par.*, u.github_login
-     FROM project_access_requests par
-     JOIN users u ON u.id = par.user_id
-     WHERE par.project_id = $1 AND par.status = 'pending'
-     ORDER BY par.requested_at DESC`,
-    [projectId]
-  );
+  const services = canViewServices
+    ? await query(
+        `SELECT r.*, d.ref AS last_deployed_ref, d.ref_type AS last_deployed_ref_type, d.status AS last_deployment_status,
+                st.tunnel_url AS active_tunnel_url
+         FROM repositories r
+         LEFT JOIN LATERAL (
+           SELECT ref, ref_type, status FROM deployments WHERE repo_id = r.id ORDER BY started_at DESC LIMIT 1
+         ) d ON true
+         LEFT JOIN LATERAL (
+           SELECT tunnel_url FROM service_tunnels WHERE repo_id = r.id AND status = 'active' ORDER BY created_at DESC LIMIT 1
+         ) st ON true
+         WHERE r.project_id = $1
+         ORDER BY r.created_at DESC`,
+        [projectId]
+      )
+    : { rows: [] as any[] };
 
-  return Response.json({ project: projectResult.rows[0], services: services.rows, pending_access_requests: requests.rows });
+  const requests = isManager
+    ? await query<ProjectAccessRequest & { github_login: string }>(
+        `SELECT par.*, u.github_login
+         FROM project_access_requests par
+         JOIN users u ON u.id = par.user_id
+         WHERE par.project_id = $1 AND par.status = 'pending'
+         ORDER BY par.requested_at DESC`,
+        [projectId]
+      )
+    : { rows: [] as any[] };
+
+  return Response.json({ project, services: services.rows, pending_access_requests: requests.rows });
 }
 
 export async function updateProject(req: Request, user: User, projectId: number): Promise<Response> {
-  const allowed = user.role === 'admin' || await checkProjectAccess(user, projectId, 'deploy');
+  const projectCheck = await query<{ created_by: number | null }>('SELECT created_by FROM projects WHERE id = $1', [projectId]);
+  if (projectCheck.rows.length === 0) return Response.json({ error: 'Project not found' }, { status: 404 });
+  const allowed = user.role === 'admin' || projectCheck.rows[0].created_by === user.id;
   if (!allowed) return Response.json({ error: 'Forbidden' }, { status: 403 });
 
   let body: unknown;
@@ -166,20 +159,21 @@ export async function updateProject(req: Request, user: User, projectId: number)
   const updates: string[] = [];
   const values: unknown[] = [];
   let i = 1;
-
   if (parsed.data.name !== undefined) { updates.push(`name = $${i++}`); values.push(parsed.data.name); }
   if (parsed.data.description !== undefined) { updates.push(`description = $${i++}`); values.push(parsed.data.description); }
   if (updates.length === 0) return Response.json({ error: 'No updates provided' }, { status: 400 });
   values.push(projectId);
 
   const result = await query<Project>(`UPDATE projects SET ${updates.join(', ')} WHERE id = $${i} RETURNING *`, values);
-  if (result.rows.length === 0) return Response.json({ error: 'Project not found' }, { status: 404 });
   return Response.json({ project: result.rows[0] });
 }
 
 export async function deleteProject(req: Request, user: User, projectId: number): Promise<Response> {
-  const project = await query<{ created_by: number | null }>('SELECT created_by FROM projects WHERE id = $1', [projectId]);
+  const project = await query<{ created_by: number | null; name: string }>('SELECT created_by, name FROM projects WHERE id = $1', [projectId]);
   if (project.rows.length === 0) return Response.json({ error: 'Project not found' }, { status: 404 });
+  if (project.rows[0].name === 'default-project') {
+    return Response.json({ error: 'The default project cannot be deleted' }, { status: 400 });
+  }
   if (user.role !== 'admin' && project.rows[0].created_by !== user.id) {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
@@ -191,19 +185,17 @@ export async function requestProjectAccess(req: Request, user: User, projectId: 
   const existingPerm = await checkProjectAccess(user, projectId, 'view');
   if (existingPerm) return Response.json({ error: 'Already has access' }, { status: 400 });
 
+  const project = await query('SELECT 1 FROM projects WHERE id = $1', [projectId]);
+  if (project.rows.length === 0) return Response.json({ error: 'Project not found' }, { status: 404 });
+
   const existing = await query(
-    `SELECT 1 FROM project_access_requests
-     WHERE user_id = $1 AND project_id = $2 AND status = 'pending'`,
+    `SELECT 1 FROM project_access_requests WHERE user_id = $1 AND project_id = $2 AND status = 'pending'`,
     [user.id, projectId]
   );
-  if (existing.rows.length > 0) {
-    return Response.json({ error: 'Access request already pending' }, { status: 400 });
-  }
+  if (existing.rows.length > 0) return Response.json({ error: 'Access request already pending' }, { status: 400 });
 
   const result = await query<ProjectAccessRequest>(
-    `INSERT INTO project_access_requests (user_id, project_id, status)
-     VALUES ($1, $2, 'pending')
-     RETURNING *`,
+    `INSERT INTO project_access_requests (user_id, project_id, status) VALUES ($1, $2, 'pending') RETURNING *`,
     [user.id, projectId]
   );
   return Response.json({ access_request: result.rows[0] }, { status: 201 });
@@ -212,9 +204,7 @@ export async function requestProjectAccess(req: Request, user: User, projectId: 
 export async function processProjectAccessRequest(req: Request, user: User, projectId: number, targetUserId: number): Promise<Response> {
   const project = await query<{ created_by: number | null }>('SELECT created_by FROM projects WHERE id = $1', [projectId]);
   if (project.rows.length === 0) return Response.json({ error: 'Project not found' }, { status: 404 });
-  if (user.role !== 'admin' && project.rows[0].created_by !== user.id) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  if (user.role !== 'admin' && project.rows[0].created_by !== user.id) return Response.json({ error: 'Forbidden' }, { status: 403 });
 
   let body: unknown;
   try { body = await req.json(); } catch {
@@ -230,10 +220,7 @@ export async function processProjectAccessRequest(req: Request, user: User, proj
      RETURNING *`,
     [targetUserId, projectId, parsed.data.status, user.id, parsed.data.note || null]
   );
-
-  if (result.rows.length === 0) {
-    return Response.json({ error: 'Pending access request not found' }, { status: 404 });
-  }
+  if (result.rows.length === 0) return Response.json({ error: 'Pending access request not found' }, { status: 404 });
 
   if (parsed.data.status === 'approved') {
     await query(
@@ -244,7 +231,6 @@ export async function processProjectAccessRequest(req: Request, user: User, proj
       [targetUserId, projectId, parsed.data.can_deploy]
     );
   }
-
   return Response.json({ access_request: result.rows[0] });
 }
 
@@ -266,10 +252,7 @@ export async function listProjectUsers(req: Request, user: User, projectId: numb
 export async function removeProjectUser(req: Request, user: User, projectId: number, targetUserId: number): Promise<Response> {
   const project = await query<{ created_by: number | null }>('SELECT created_by FROM projects WHERE id = $1', [projectId]);
   if (project.rows.length === 0) return Response.json({ error: 'Project not found' }, { status: 404 });
-  if (user.role !== 'admin' && project.rows[0].created_by !== user.id) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
+  if (user.role !== 'admin' && project.rows[0].created_by !== user.id) return Response.json({ error: 'Forbidden' }, { status: 403 });
   await query('DELETE FROM user_project_permissions WHERE user_id = $1 AND project_id = $2', [targetUserId, projectId]);
   return Response.json({ success: true });
 }

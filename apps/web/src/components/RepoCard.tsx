@@ -35,7 +35,10 @@ export default function RepoCard({ repo, onDeploy, canDeploy = false }: RepoCard
           >
             {repo.full_name}
           </Link>
-          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <div style={{ color: '#666', fontSize: 12, marginTop: 6, fontWeight: 700 }}>
+            service: {repo.service_name}{repo.project_name ? ` · project: ${repo.project_name}` : ''}
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
             <span style={{
               fontSize: 11,
               padding: '4px 10px',

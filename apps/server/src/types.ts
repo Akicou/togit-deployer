@@ -20,6 +20,9 @@ export interface Project {
   // Joined fields
   service_count?: number;
   active_tunnel_count?: number;
+  has_access?: boolean;
+  can_deploy?: boolean;
+  access_request_pending?: boolean;
   user_permissions?: ProjectPermission;
 }
 
