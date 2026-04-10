@@ -10,6 +10,38 @@ export interface User {
   created_at: Date;
 }
 
+export interface Project {
+  id: number;
+  name: string;
+  description: string | null;
+  created_by: number | null;
+  created_by_login?: string;
+  created_at: Date;
+  // Joined fields
+  service_count?: number;
+  active_tunnel_count?: number;
+  user_permissions?: ProjectPermission;
+}
+
+export interface ProjectAccessRequest {
+  id: number;
+  user_id: number;
+  project_id: number;
+  status: 'pending' | 'approved' | 'rejected';
+  requested_at: Date;
+  processed_at: Date | null;
+  processed_by: number | null;
+  note: string | null;
+  // Joined fields
+  github_login?: string;
+  project_name?: string;
+}
+
+export interface ProjectPermission {
+  can_view: boolean;
+  can_deploy: boolean;
+}
+
 export interface Repository {
   id: number;
   owner: string;
@@ -21,6 +53,7 @@ export interface Repository {
   watch_branch: string;
   enabled: boolean;
   added_by: number | null;
+  project_id: number | null;
   // JSONB column — node-postgres automatically parses JSONB to objects
   deployment_env_vars: Record<string, string> | string;
   /** Logical service name for monorepo support. Defaults to 'app'. */
@@ -29,17 +62,26 @@ export interface Repository {
   container_port: number;
   /** Fixed host port assigned to this repo for tunnel routing. */
   tunnel_port: number | null;
-  /** Tunnel creation mode: random, subdomain, or custom-domain. */
-  tunnel_type: 'random' | 'subdomain' | 'custom-domain';
-  /** Custom subdomain name (subdomain mode only, e.g. "myapp"). */
-  tunnel_subdomain: string | null;
-  /** Domain for subdomain mode (e.g. "localto.net") or full domain for custom-domain mode. */
-  tunnel_domain: string | null;
-  /** Persistent Localtonet tunnel ID, reused across redeployments. */
-  localtonet_tunnel_id: string | null;
-  /** Permanent public tunnel URL for this repo+service. */
-  tunnel_url: string | null;
+  /** Whether tunnel is currently enabled for this service */
+  tunnel_enabled: boolean;
   created_at: Date;
+}
+
+export interface ServiceTunnel {
+  id: number;
+  repo_id: number;
+  created_by: number | null;
+  localtonet_tunnel_id: string;
+  tunnel_url: string;
+  tunnel_port: number;
+  status: 'active' | 'inactive';
+  created_at: Date;
+  last_used_at: Date | null;
+  stopped_at: Date | null;
+  stop_reason: string | null;
+  // Joined fields
+  repo_name?: string;
+  created_by_login?: string;
 }
 
 export interface Deployment {
@@ -84,8 +126,17 @@ export interface UserRepoPermission {
   can_deploy: boolean;
 }
 
+export interface UserProjectPermission {
+  user_id: number;
+  project_id: number;
+  can_view: boolean;
+  can_deploy: boolean;
+}
+
 export interface Settings {
   poll_interval_seconds: number;
+  max_tunnels_per_project?: number;
+  max_tunnels_per_user?: number;
   [key: string]: unknown;
 }
 

@@ -10,7 +10,8 @@ interface SidebarProps {
 
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: DashboardIcon },
-  { path: '/repositories', label: 'Repositories', icon: RepoIcon },
+  { path: '/projects', label: 'Projects', icon: ProjectsIcon },
+  { path: '/repositories', label: 'Services', icon: RepoIcon },
   { path: '/logs', label: 'Logs', icon: LogsIcon },
   { path: '/settings', label: 'Settings', icon: SettingsIcon },
 ];
@@ -171,6 +172,17 @@ function DashboardIcon() {
       <rect x="14" y="3" width="7" height="5" />
       <rect x="14" y="12" width="7" height="9" />
       <rect x="3" y="16" width="7" height="5" />
+    </svg>
+  );
+}
+
+function ProjectsIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+      <rect x="3" y="4" width="7" height="7" />
+      <rect x="14" y="4" width="7" height="7" />
+      <rect x="3" y="14" width="7" height="7" />
+      <rect x="14" y="14" width="7" height="7" />
     </svg>
   );
 }

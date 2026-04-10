@@ -5,8 +5,8 @@ import path from 'path';
 import fs from 'fs';
 import { query, pool } from '../db/client.js';
 import { logBuild, logDocker, logSystem, logError } from '../logger/index.js';
-import { createTunnel, startTunnel, updateTunnelPort, stopTunnel } from './localtonet.js';
-import type { TunnelType } from './localtonet.js';
+import { stopTunnel, startTunnel } from './localtonet.js';
+import { syncTunnelAfterDeploy } from './tunnel-manager.js';
 import { rollbackRepo } from './rollback.js';
 import { decryptAccessToken } from '../github/oauth.js';
 import type { Repository, Deployment, User } from '../types.js';
@@ -514,7 +514,7 @@ export async function deploy(
   const imageName = `togit-${repo.id}-${serviceName}-${sanitizedRef}`;
   const containerName = `togit-${repo.id}-${serviceName}`;
 
-  // Re-fetch repo to get latest tunnel config (container_port, tunnel_port, localtonet_tunnel_id)
+  // Re-fetch repo to get latest runtime config (container_port, tunnel_port)
   const freshRepoResult = await query<Repository>('SELECT * FROM repositories WHERE id = $1', [repo.id]);
   const freshRepo = freshRepoResult.rows[0] || repo;
 
@@ -621,47 +621,20 @@ export async function deploy(
     }
     await logDocker(`Container started and healthy on host port ${tunnelPort}`, { deployment_id: deployment.id, repo_id: repo.id });
 
-    // Tunnel: reuse existing or create new
-    const authToken = process.env.LOCALTONET_AUTH_TOKEN || '';
-    if (!authToken) {
-      throw new Error('LOCALTONET_AUTH_TOKEN is not configured');
-    }
-
-    let tunnelId = freshRepo.localtonet_tunnel_id;
-    let tunnelUrl = freshRepo.tunnel_url;
-
-    if (!tunnelId) {
-      // First deploy: create the tunnel using the configured type
-      const t = await createTunnel(deployment.id, tunnelPort, authToken, {
-        type: (freshRepo as any).tunnel_type as TunnelType || 'random',
-        subDomain: freshRepo.tunnel_subdomain || undefined,
-        domain: (freshRepo as any).tunnel_domain || undefined,
-      });
-      tunnelId = t.tunnelId;
-      tunnelUrl = t.tunnelUrl;
-      await query(
-        `UPDATE repositories SET localtonet_tunnel_id = $1, tunnel_url = $2, tunnel_port = $3 WHERE id = $4`,
-        [tunnelId, tunnelUrl, tunnelPort, freshRepo.id]
-      );
-    } else {
-      // Reuse existing tunnel — ensure it points to the current host port
-      await updateTunnelPort(tunnelId, tunnelPort, authToken).catch((err) =>
-        logDocker(`Could not update tunnel port (non-fatal): ${err.message}`)
-      );
-    }
-
-    // Always start the tunnel (ensures it's routing, even if it was stopped)
-    await startTunnel(tunnelId, authToken);
-    logSystem(`Tunnel started: ${tunnelUrl}`, { deployment_id: deployment.id, repo_id: repo.id });
+    // Tunnels are on-demand only. If an active tunnel already exists for this service,
+    // re-point it to the new host port, but never create one automatically.
+    await syncTunnelAfterDeploy(repo.id, tunnelPort).catch((err) =>
+      logDocker(`Could not sync existing on-demand tunnel (non-fatal): ${err.message}`)
+    );
 
     await query(
       `UPDATE deployments
-       SET status = 'running', container_id = $1, tunnel_url = $2, tunnel_port = $3, localtonet_tunnel_id = $4, finished_at = NOW()
-       WHERE id = $5`,
-      [container.id, tunnelUrl, tunnelPort, tunnelId, deployment.id]
+       SET status = 'running', container_id = $1, tunnel_port = $2, finished_at = NOW()
+       WHERE id = $3`,
+      [container.id, tunnelPort, deployment.id]
     );
 
-    logSystem(`Deployment ${deployment.id} completed successfully: ${tunnelUrl}`, {
+    logSystem(`Deployment ${deployment.id} completed successfully on host port ${tunnelPort}`, {
       deployment_id: deployment.id,
       repo_id: repo.id,
     });
@@ -672,7 +645,7 @@ export async function deploy(
     // Clean up old images while we're at it
     cleanupOldImages().catch(() => {}); // fire-and-forget
 
-    return { ...deployment, status: 'running', container_id: container.id, tunnel_url: tunnelUrl, tunnel_port: tunnelPort };
+    return { ...deployment, status: 'running', container_id: container.id, tunnel_port: tunnelPort };
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);

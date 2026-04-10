@@ -9,6 +9,17 @@ export interface User {
   created_at: string;
 }
 
+export interface Project {
+  id: number;
+  name: string;
+  description: string | null;
+  created_by: number | null;
+  created_by_login?: string;
+  created_at: string;
+  service_count?: number;
+  active_tunnel_count?: number;
+}
+
 export interface Repository {
   id: number;
   owner: string;
@@ -20,20 +31,23 @@ export interface Repository {
   watch_branch: string;
   enabled: boolean;
   added_by: number | null;
+  project_id: number | null;
   deployment_env_vars: Record<string, string>;
   service_name: string;
   container_port: number;
   tunnel_port: number | null;
-  tunnel_type: 'random' | 'subdomain' | 'custom-domain';
-  tunnel_subdomain: string | null;
-  tunnel_domain: string | null;
-  localtonet_tunnel_id: string | null;
-  tunnel_url: string | null;
+  tunnel_enabled?: boolean;
+  tunnel_type?: 'random' | 'subdomain' | 'custom-domain';
+  tunnel_subdomain?: string | null;
+  tunnel_domain?: string | null;
+  localtonet_tunnel_id?: string | null;
+  tunnel_url?: string | null;
   created_at: string;
   last_deployed_ref?: string;
   last_deployed_ref_type?: string;
   last_deployment_status?: string;
   last_tunnel_url?: string;
+  project_name?: string;
 }
 
 export interface Deployment {

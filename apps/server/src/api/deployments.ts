@@ -124,50 +124,16 @@ export async function listActiveTunnels(req: Request, user: User): Promise<Respo
     return Response.json({ error: 'Only admins can list tunnels' }, { status: 403 });
   }
 
-  const { getActiveTunnels } = await import('../daemon/localtonet.js');
-  const tunnels = await getActiveTunnels();
+  const { listActiveServiceTunnels } = await import('../daemon/tunnel-manager.js');
+  const tunnels = await listActiveServiceTunnels();
 
   return Response.json({ tunnels });
 }
 
-export async function stopTunnel(req: Request, user: User, deploymentId: number): Promise<Response> {
-  if (user.role !== 'admin') {
-    return Response.json({ error: 'Only admins can stop tunnels' }, { status: 403 });
-  }
-
-  const deployment = await query<Deployment & { localtonet_tunnel_id: string | null }>(
-    'SELECT * FROM deployments WHERE id = $1',
-    [deploymentId]
-  );
-
-  if (deployment.rows.length === 0) {
-    return Response.json({ error: 'Deployment not found' }, { status: 404 });
-  }
-
-  const d = deployment.rows[0];
-
-  if (!d.localtonet_tunnel_id) {
-    return Response.json({ error: 'No tunnel found for this deployment' }, { status: 404 });
-  }
-
-  const authToken = process.env.LOCALTONET_AUTH_TOKEN || '';
-  if (!authToken) {
-    return Response.json({ error: 'LOCALTONET_AUTH_TOKEN not configured' }, { status: 500 });
-  }
-
+export async function stopTunnel(req: Request, user: User, repoId: number): Promise<Response> {
   try {
-    const { stopTunnel } = await import('../daemon/localtonet.js');
-    await stopTunnel(d.localtonet_tunnel_id, authToken);
-
-    // Update deployment status
-    await query(
-      `UPDATE deployments 
-       SET status = 'rolled_back', 
-           finished_at = NOW()
-       WHERE id = $1`,
-      [deploymentId]
-    );
-
+    const { stopServiceTunnelByRepo } = await import('../daemon/tunnel-manager.js');
+    await stopServiceTunnelByRepo(repoId, user);
     return Response.json({ success: true, message: 'Tunnel stopped successfully' });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -187,14 +153,70 @@ export async function testLocaltonetConnection(req: Request, user: User): Promis
   return Response.json(result);
 }
 
-export async function getTunnelStatus(req: Request, user: User, tunnelId: string): Promise<Response> {
-  if (user.role !== 'admin') {
-    return Response.json({ error: 'Only admins can check tunnel status' }, { status: 403 });
+export async function createRepoTunnel(req: Request, user: User, repoId: number): Promise<Response> {
+  const repoResult = await query<Repository>('SELECT * FROM repositories WHERE id = $1', [repoId]);
+  if (repoResult.rows.length === 0) {
+    return Response.json({ error: 'Repository not found' }, { status: 404 });
+  }
+  const repo = repoResult.rows[0];
+
+  if (repo.project_id) {
+    const { checkProjectAccess } = await import('./projects.js');
+    const allowed = await checkProjectAccess(user, repo.project_id, 'deploy');
+    if (!allowed) return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const authToken = process.env.LOCALTONET_AUTH_TOKEN || '';
-  const { getTunnelStatus } = await import('../daemon/localtonet.js');
-  const result = await getTunnelStatus(tunnelId, authToken);
+  try {
+    const { createServiceTunnel } = await import('../daemon/tunnel-manager.js');
+    const tunnel = await createServiceTunnel(repo, user);
+    return Response.json({ tunnel }, { status: 201 });
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+  }
+}
 
+export async function getRepoTunnel(req: Request, user: User, repoId: number): Promise<Response> {
+  const repoResult = await query<Repository>('SELECT * FROM repositories WHERE id = $1', [repoId]);
+  if (repoResult.rows.length === 0) {
+    return Response.json({ error: 'Repository not found' }, { status: 404 });
+  }
+  const repo = repoResult.rows[0];
+
+  if (repo.project_id) {
+    const { checkProjectAccess } = await import('./projects.js');
+    const allowed = await checkProjectAccess(user, repo.project_id, 'view');
+    if (!allowed) return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const { getActiveTunnelStatusByRepo } = await import('../daemon/tunnel-manager.js');
+  const tunnel = await getActiveTunnelStatusByRepo(repoId);
+  return Response.json(tunnel);
+}
+
+export async function deleteRepoTunnel(req: Request, user: User, repoId: number): Promise<Response> {
+  const repoResult = await query<Repository>('SELECT * FROM repositories WHERE id = $1', [repoId]);
+  if (repoResult.rows.length === 0) {
+    return Response.json({ error: 'Repository not found' }, { status: 404 });
+  }
+  const repo = repoResult.rows[0];
+
+  if (repo.project_id) {
+    const { checkProjectAccess } = await import('./projects.js');
+    const allowed = await checkProjectAccess(user, repo.project_id, 'deploy');
+    if (!allowed) return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  try {
+    const { deleteServiceTunnelByRepo } = await import('../daemon/tunnel-manager.js');
+    await deleteServiceTunnelByRepo(repoId);
+    return Response.json({ success: true });
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+  }
+}
+
+export async function getTunnelStatus(req: Request, user: User, repoId: string): Promise<Response> {
+  const { getActiveTunnelStatusByRepo } = await import('../daemon/tunnel-manager.js');
+  const result = await getActiveTunnelStatusByRepo(parseInt(repoId, 10));
   return Response.json(result);
 }

@@ -6,7 +6,7 @@ import RepoCard from '../components/RepoCard';
 import DeployBadge from '../components/DeployBadge';
 import { useDeployments } from '../hooks/useDeployments';
 import { useToast } from '../components/Toast';
-import type { User, Repository } from '../types';
+import type { User, Repository, Project } from '../types';
 
 interface RepositoriesProps {
   user: User;
@@ -964,9 +964,11 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
 function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => void }) {
   const [search, setSearch] = useState('');
   const [results, setResults] = useState<any[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<any>(null);
   const [config, setConfig] = useState({
+    project_id: 0,
     service_name: 'app',
     root_path: '/',
     deploy_mode: 'release' as 'release' | 'commit',
@@ -982,6 +984,26 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
     }, 300);
     return () => clearTimeout(timer);
   }, [search]);
+
+  useEffect(() => {
+    loadProjects();
+  }, []);
+
+  async function loadProjects() {
+    try {
+      const response = await api.get('/api/projects');
+      if (response.ok) {
+        const data = await response.json();
+        const loaded = data.projects || [];
+        setProjects(loaded);
+        if (loaded[0]) {
+          setConfig((prev) => ({ ...prev, project_id: loaded[0].id }));
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load projects:', error);
+    }
+  }
 
   async function searchRepos() {
     setLoading(true);
@@ -999,7 +1021,7 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
   }
 
   async function handleAdd() {
-    if (!selected) return;
+    if (!selected || !config.project_id) return;
     setAdding(true);
     try {
       await api.post('/api/repos', {
@@ -1186,6 +1208,22 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
                   Change
                 </button>
               </div>
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={labelStyle}>Project</label>
+              <select
+                value={config.project_id}
+                onChange={(e) => setConfig({ ...config, project_id: parseInt(e.target.value, 10) })}
+                style={{ ...inputStyle, cursor: 'pointer' }}
+              >
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>{project.name}</option>
+                ))}
+              </select>
+              <p style={{ color: '#999', fontSize: 11, marginTop: 4, fontWeight: 600 }}>
+                Services must belong to a project
+              </p>
             </div>
 
             <div style={{ marginBottom: 20 }}>

@@ -19,6 +19,7 @@ import * as deploymentsApi from './api/deployments.js';
 import * as logsApi from './api/logs.js';
 import * as usersApi from './api/users.js';
 import * as accessApi from './api/access-requests.js';
+import * as projectsApi from './api/projects.js';
 import { handleGitHubWebhook } from './api/webhooks.js';
 import type { User } from './types.js';
 
@@ -197,6 +198,53 @@ async function handleRequest(req: Request): Promise<Response> {
       return addCors(await reposApi.getEnvExample(req, user, repoId));
     }
 
+    // ── Project routes ───────────────────────────────────────────────────────
+    if (path === '/api/projects' && req.method === 'GET') {
+      return addCors(await projectsApi.listProjects(req, user));
+    }
+    if (path === '/api/projects' && req.method === 'POST') {
+      return addCors(await projectsApi.createProject(req, user));
+    }
+
+    params = matchRoute('/api/projects/:id', path);
+    if (params) {
+      const projectId = parseInt(params.id, 10);
+      if (isNaN(projectId)) return addCors(Response.json({ error: 'Invalid project ID' }, { status: 400 }));
+      if (req.method === 'GET') return addCors(await projectsApi.getProject(req, user, projectId));
+      if (req.method === 'PATCH') return addCors(await projectsApi.updateProject(req, user, projectId));
+      if (req.method === 'DELETE') return addCors(await projectsApi.deleteProject(req, user, projectId));
+    }
+
+    params = matchRoute('/api/projects/:id/request-access', path);
+    if (params && req.method === 'POST') {
+      const projectId = parseInt(params.id, 10);
+      if (isNaN(projectId)) return addCors(Response.json({ error: 'Invalid project ID' }, { status: 400 }));
+      return addCors(await projectsApi.requestProjectAccess(req, user, projectId));
+    }
+
+    params = matchRoute('/api/projects/:id/users', path);
+    if (params && req.method === 'GET') {
+      const projectId = parseInt(params.id, 10);
+      if (isNaN(projectId)) return addCors(Response.json({ error: 'Invalid project ID' }, { status: 400 }));
+      return addCors(await projectsApi.listProjectUsers(req, user, projectId));
+    }
+
+    params = matchRoute('/api/projects/:id/access-requests/:userId', path);
+    if (params && req.method === 'PATCH') {
+      const projectId = parseInt(params.id, 10);
+      const targetUserId = parseInt(params.userId, 10);
+      if (isNaN(projectId) || isNaN(targetUserId)) return addCors(Response.json({ error: 'Invalid IDs' }, { status: 400 }));
+      return addCors(await projectsApi.processProjectAccessRequest(req, user, projectId, targetUserId));
+    }
+
+    params = matchRoute('/api/projects/:id/users/:userId', path);
+    if (params && req.method === 'DELETE') {
+      const projectId = parseInt(params.id, 10);
+      const targetUserId = parseInt(params.userId, 10);
+      if (isNaN(projectId) || isNaN(targetUserId)) return addCors(Response.json({ error: 'Invalid IDs' }, { status: 400 }));
+      return addCors(await projectsApi.removeProjectUser(req, user, projectId, targetUserId));
+    }
+
     // ── Deployment routes ────────────────────────────────────────────────────
     // GET/DELETE /api/deployments/:id
     params = matchRoute('/api/deployments/:id', path);
@@ -217,6 +265,15 @@ async function handleRequest(req: Request): Promise<Response> {
 
     if (path === '/api/deployments/recent' && req.method === 'GET') {
       return addCors(await deploymentsApi.listRecentDeployments(req));
+    }
+
+    params = matchRoute('/api/repos/:id/tunnel', path);
+    if (params) {
+      const repoId = parseInt(params.id, 10);
+      if (isNaN(repoId)) return addCors(Response.json({ error: 'Invalid repo ID' }, { status: 400 }));
+      if (req.method === 'POST') return addCors(await deploymentsApi.createRepoTunnel(req, user, repoId));
+      if (req.method === 'GET') return addCors(await deploymentsApi.getRepoTunnel(req, user, repoId));
+      if (req.method === 'DELETE') return addCors(await deploymentsApi.deleteRepoTunnel(req, user, repoId));
     }
 
     // ── Tunnel management routes ─────────────────────────────────────────────

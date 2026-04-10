@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import Projects from './pages/Projects';
 import Repositories from './pages/Repositories';
 import DeploymentDetail from './pages/DeploymentDetail';
 import Logs from './pages/Logs';
@@ -80,6 +81,8 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={<Dashboard user={user} />} />
+              <Route path="/projects" element={<Projects user={user} />} />
+              <Route path="/projects/:id" element={<Projects user={user} />} />
               <Route path="/repositories" element={<Repositories user={user} />} />
               <Route path="/repositories/:id" element={<Repositories user={user} />} />
               <Route path="/deployments/:id" element={<DeploymentDetail user={user} />} />
