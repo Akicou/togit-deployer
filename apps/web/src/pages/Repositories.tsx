@@ -15,6 +15,7 @@ interface RepositoriesProps {
 export default function Repositories({ user }: RepositoriesProps) {
   const { id } = useParams();
   const [repos, setRepos] = useState<Repository[]>([]);
+  const [filteredRepos, setFilteredRepos] = useState<Repository[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDeployModal, setShowDeployModal] = useState<{ repoId: number; repoName: string } | null>(null);
@@ -22,15 +23,22 @@ export default function Repositories({ user }: RepositoriesProps) {
   const [envVars, setEnvVars] = useState<Record<string, string>>({});
   const [envExample, setEnvExample] = useState<Record<string, string> | null>(null);
   const [loadingEnv, setLoadingEnv] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProject, setSelectedProject] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'name' | 'status' | 'last_deployed'>('name');
   const toast = useToast();
 
   const canManage = user.role === 'admin' || user.role === 'deployer';
-  void showAddModal;
-  void setShowAddModal;
 
   useEffect(() => {
     loadRepos();
+    loadProjects();
   }, []);
+
+  useEffect(() => {
+    filterAndSortRepos();
+  }, [repos, selectedProject, searchQuery, sortBy]);
 
   async function loadRepos() {
     try {
@@ -44,6 +52,58 @@ export default function Repositories({ user }: RepositoriesProps) {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadProjects() {
+    try {
+      const response = await api.get('/api/projects');
+      if (response.ok) {
+        const data = await response.json();
+        setProjects(data.projects || []);
+      }
+    } catch (error) {
+      console.error('Failed to load projects:', error);
+    }
+  }
+
+  function filterAndSortRepos() {
+    let filtered = [...repos];
+
+    // Filter by project
+    if (selectedProject !== null) {
+      filtered = filtered.filter(repo => repo.project_id === selectedProject);
+    }
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(repo =>
+        repo.full_name.toLowerCase().includes(query) ||
+        repo.service_name.toLowerCase().includes(query) ||
+        (repo.project_name && repo.project_name.toLowerCase().includes(query))
+      );
+    }
+
+    // Sort
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'name':
+          return a.full_name.localeCompare(b.full_name);
+        case 'status':
+          const statusOrder = { 'running': 0, 'building': 1, 'pending': 2, 'failed': 3, 'never': 4 };
+          const statusA = statusOrder[a.last_deployment_status as keyof typeof statusOrder] ?? 4;
+          const statusB = statusOrder[b.last_deployment_status as keyof typeof statusOrder] ?? 4;
+          return statusA - statusB;
+        case 'last_deployed':
+          const timeA = new Date(a.created_at).getTime();
+          const timeB = new Date(b.created_at).getTime();
+          return timeB - timeA;
+        default:
+          return 0;
+      }
+    });
+
+    setFilteredRepos(filtered);
   }
 
   async function handleDeployClick(repoId: number, repoName: string) {
@@ -109,7 +169,7 @@ export default function Repositories({ user }: RepositoriesProps) {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: 40,
+          marginBottom: 24,
         }}
       >
         <div>
@@ -117,16 +177,217 @@ export default function Repositories({ user }: RepositoriesProps) {
             SERVICES
           </h1>
           <p style={{ color: '#666', fontWeight: 600, fontSize: 14 }}>
-            {repos.length} {repos.length === 1 ? 'service' : 'services'} configured · create new services from a project page
+            {filteredRepos.length} {filteredRepos.length === 1 ? 'service' : 'services'} · {repos.length} total
           </p>
         </div>
+        {canManage && (
+          <button
+            onClick={() => setShowAddModal(true)}
+            style={{
+              padding: '14px 24px',
+              border: '3px solid #1a1a1a',
+              background: '#1a1a1a',
+              color: '#ffffff',
+              fontWeight: 800,
+              cursor: 'pointer',
+              fontSize: 13,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              boxShadow: '4px 4px 0 #1a1a1a',
+              transition: 'all 0.1s ease',
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.boxShadow = '2px 2px 0 #1a1a1a';
+              e.currentTarget.style.transform = 'translate(2px, 2px)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.boxShadow = '4px 4px 0 #1a1a1a';
+              e.currentTarget.style.transform = 'translate(0, 0)';
+            }}
+          >
+            + Add Service
+          </button>
+        )}
+      </motion.div>
+
+      {/* Filters and Search */}
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        style={{
+          background: '#ffffff',
+          border: '3px solid #1a1a1a',
+          padding: 20,
+          marginBottom: 24,
+          boxShadow: '4px 4px 0 #1a1a1a',
+        }}
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, alignItems: 'end' }}>
+          {/* Project Filter */}
+          <div>
+            <label style={{
+              display: 'block',
+              color: '#666',
+              fontSize: 11,
+              marginBottom: 8,
+              fontWeight: 800,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}>
+              Filter by Project
+            </label>
+            <select
+              value={selectedProject ?? ''}
+              onChange={(e) => setSelectedProject(e.target.value ? parseInt(e.target.value, 10) : null)}
+              style={{
+                width: '100%',
+                padding: '12px 14px',
+                border: '2px solid #1a1a1a',
+                background: '#f5f5f5',
+                color: '#1a1a1a',
+                fontSize: 14,
+                fontWeight: 600,
+                outline: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              <option value="">All Projects</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name} ({repos.filter(r => r.project_id === project.id).length} services)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Search */}
+          <div>
+            <label style={{
+              display: 'block',
+              color: '#666',
+              fontSize: 11,
+              marginBottom: 8,
+              fontWeight: 800,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}>
+              Search Services
+            </label>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Service name, repo, or project..."
+              style={{
+                width: '100%',
+                padding: '12px 14px',
+                border: '2px solid #1a1a1a',
+                background: '#f5f5f5',
+                color: '#1a1a1a',
+                fontSize: 14,
+                fontWeight: 600,
+                outline: 'none',
+              }}
+            />
+          </div>
+
+          {/* Sort */}
+          <div>
+            <label style={{
+              display: 'block',
+              color: '#666',
+              fontSize: 11,
+              marginBottom: 8,
+              fontWeight: 800,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}>
+              Sort By
+            </label>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as 'name' | 'status' | 'last_deployed')}
+              style={{
+                width: '100%',
+                padding: '12px 14px',
+                border: '2px solid #1a1a1a',
+                background: '#f5f5f5',
+                color: '#1a1a1a',
+                fontSize: 14,
+                fontWeight: 600,
+                outline: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              <option value="name">Name</option>
+              <option value="status">Status</option>
+              <option value="last_deployed">Last Deployed</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Active Filters Display */}
+        {(selectedProject !== null || searchQuery.trim()) && (
+          <div style={{
+            marginTop: 16,
+            paddingTop: 16,
+            borderTop: '2px solid #e5e5e5',
+            display: 'flex',
+            gap: 8,
+            flexWrap: 'wrap',
+          }}>
+            {selectedProject !== null && (
+              <button
+                onClick={() => setSelectedProject(null)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 12px',
+                  border: '2px solid #1a1a1a',
+                  background: '#1a1a1a',
+                  color: '#ffffff',
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                }}
+              >
+                Project: {projects.find(p => p.id === selectedProject)?.name} ×
+              </button>
+            )}
+            {searchQuery.trim() && (
+              <button
+                onClick={() => setSearchQuery('')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 12px',
+                  border: '2px solid #1a1a1a',
+                  background: '#1a1a1a',
+                  color: '#ffffff',
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                }}
+              >
+                Search: {searchQuery} ×
+              </button>
+            )}
+          </div>
+        )}
       </motion.div>
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: 60, color: '#666', fontWeight: 700 }}>
           Loading repositories...
         </div>
-      ) : repos.length === 0 ? (
+      ) : filteredRepos.length === 0 ? (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -142,10 +403,33 @@ export default function Repositories({ user }: RepositoriesProps) {
               <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
             </svg>
           </div>
-          <h3 style={{ color: '#1a1a1a', marginBottom: 8, fontWeight: 800, fontSize: 20, textTransform: 'uppercase' }}>No services yet</h3>
+          <h3 style={{ color: '#1a1a1a', marginBottom: 8, fontWeight: 800, fontSize: 20, textTransform: 'uppercase' }}>
+            {repos.length === 0 ? 'No services yet' : 'No matching services'}
+          </h3>
           <p style={{ color: '#666', marginBottom: 28, fontWeight: 600 }}>
-            Create a service from the relevant project page to start deploying
+            {repos.length === 0
+              ? 'Create your first service to start deploying'
+              : 'Try adjusting your filters or search query'}
           </p>
+          {canManage && repos.length === 0 && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              style={{
+                padding: '14px 24px',
+                border: '3px solid #1a1a1a',
+                background: '#1a1a1a',
+                color: '#ffffff',
+                fontWeight: 800,
+                cursor: 'pointer',
+                fontSize: 13,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                boxShadow: '4px 4px 0 #1a1a1a',
+              }}
+            >
+              Add Your First Service
+            </button>
+          )}
         </motion.div>
       ) : (
         <div style={{
@@ -153,7 +437,7 @@ export default function Repositories({ user }: RepositoriesProps) {
           gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
           gap: 20,
         }}>
-          {repos.map((repo, index) => (
+          {filteredRepos.map((repo, index) => (
             <motion.div
               key={repo.id}
               initial={{ opacity: 0, y: 20 }}
@@ -181,6 +465,19 @@ export default function Repositories({ user }: RepositoriesProps) {
             envExample={envExample}
             loadingEnv={loadingEnv}
             deploying={deployingRepo === showDeployModal.repoId}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showAddModal && (
+          <QuickAddServiceModal
+            projects={projects}
+            onClose={() => setShowAddModal(false)}
+            onAdded={() => {
+              loadRepos();
+              setShowAddModal(false);
+            }}
           />
         )}
       </AnimatePresence>
@@ -1265,6 +1562,489 @@ function AddRepoModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => vo
 
 void AddRepoModal;
 
+function QuickAddServiceModal({
+  projects,
+  onClose,
+  onAdded,
+}: {
+  projects: Project[];
+  onClose: () => void;
+  onAdded: () => void;
+}) {
+  const [step, setStep] = useState<'select-project' | 'search-repo'>('select-project');
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [search, setSearch] = useState('');
+  const [results, setResults] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedRepo, setSelectedRepo] = useState<any>(null);
+  const [config, setConfig] = useState({
+    service_name: 'app',
+    root_path: '/',
+    deploy_mode: 'release' as 'release' | 'commit',
+    watch_branch: 'main',
+  });
+  const [adding, setAdding] = useState(false);
+  const [existingRepos, setExistingRepos] = useState<Repository[]>([]);
+
+  // Load existing repos to avoid duplicates
+  useEffect(() => {
+    async function loadExistingRepos() {
+      try {
+        const response = await api.get('/api/repos');
+        if (response.ok) {
+          const data = await response.json();
+          setExistingRepos(data.repos || []);
+        }
+      } catch (error) {
+        console.error('Failed to load existing repos:', error);
+      }
+    }
+    loadExistingRepos();
+  }, []);
+
+  async function searchRepos() {
+    setLoading(true);
+    try {
+      const response = await api.get(`/api/repos/search?q=${encodeURIComponent(search)}`);
+      if (response.ok) {
+        const data = await response.json();
+        setResults(data.repos || []);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (search.length >= 2 && step === 'search-repo') {
+        searchRepos();
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, step]);
+
+  async function handleAdd() {
+    if (!selectedRepo || !selectedProject) return;
+    setAdding(true);
+    try {
+      await api.post('/api/repos', {
+        owner: selectedRepo.owner,
+        name: selectedRepo.name,
+        project_id: selectedProject.id,
+        ...config,
+      });
+      onAdded();
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '12px 14px',
+    border: '2px solid #1a1a1a',
+    background: '#f5f5f5',
+    color: '#1a1a1a',
+    fontSize: 14,
+    fontWeight: 600,
+    outline: 'none',
+    fontFamily: 'inherit',
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      style={modalBackdrop}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          ...modalStyle,
+          width: 560,
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <div>
+            <h2 style={{ marginTop: 0, fontSize: 22, fontWeight: 800, textTransform: 'uppercase' }}>
+              Add Service
+            </h2>
+            <p style={{ color: '#666', fontSize: 13, fontWeight: 600, margin: 0 }}>
+              Step {step === 'select-project' ? '1' : '2'} of 2
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: '2px solid #1a1a1a',
+              color: '#1a1a1a',
+              cursor: 'pointer',
+              fontWeight: 800,
+              fontSize: 16,
+              width: 32,
+              height: 32,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Step 1: Select Project */}
+        {step === 'select-project' && (
+          <>
+            <p style={{ color: '#666', fontSize: 13, fontWeight: 600, marginBottom: 20 }}>
+              Select a project to add this service to
+            </p>
+            <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+              {projects.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
+                  No projects found. Create a project first.
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {projects.map((project) => (
+                    <button
+                      key={project.id}
+                      onClick={() => {
+                        setSelectedProject(project);
+                        setStep('search-repo');
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: 16,
+                        border: '2px solid #1a1a1a',
+                        background: '#ffffff',
+                        color: '#1a1a1a',
+                        textAlign: 'left',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        boxShadow: '2px 2px 0 #1a1a1a',
+                        transition: 'all 0.1s ease',
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.background = '#f5f5f5';
+                        e.currentTarget.style.transform = 'translate(2px, 2px)';
+                        e.currentTarget.style.boxShadow = '1px 1px 0 #1a1a1a';
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.background = '#ffffff';
+                        e.currentTarget.style.transform = 'translate(0, 0)';
+                        e.currentTarget.style.boxShadow = '2px 2px 0 #1a1a1a';
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: 15, marginBottom: 4 }}>{project.name}</div>
+                          <div style={{ fontSize: 12, color: '#666', fontWeight: 600 }}>
+                            {project.description || 'No description'}
+                          </div>
+                        </div>
+                        <span style={{
+                          fontSize: 11,
+                          padding: '4px 10px',
+                          border: '2px solid #1a1a1a',
+                          background: '#f5f5f5',
+                          fontWeight: 800,
+                          textTransform: 'uppercase',
+                        }}>
+                          {repos.filter((r: any) => r.project_id === project.id).length} services
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Step 2: Search Repository */}
+        {step === 'search-repo' && (
+          <>
+            <button
+              onClick={() => setStep('select-project')}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#666',
+                fontWeight: 700,
+                cursor: 'pointer',
+                padding: 0,
+                marginBottom: 16,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                fontSize: 13,
+              }}
+            >
+              ← Back to projects
+            </button>
+
+            <div style={{
+              padding: 12,
+              border: '2px solid #1a1a1a',
+              background: '#f5f5f5',
+              marginBottom: 20,
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a1a' }}>
+                Project: {selectedProject?.name}
+              </div>
+            </div>
+
+            {!selectedRepo ? (
+              <>
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search GitHub repositories..."
+                  autoFocus
+                  style={inputStyle}
+                />
+
+                {loading ? (
+                  <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
+                    Searching...
+                  </div>
+                ) : (
+                  <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+                    {(() => {
+                      // Filter out repos that already exist in this project
+                      const existingInProject = existingRepos.filter(
+                        r => r.project_id === selectedProject?.id
+                      );
+                      const availableResults = results.filter(
+                        repo => !existingInProject.find(
+                          existing => existing.full_name === repo.full_name
+                        )
+                      );
+
+                      return availableResults.length === 0 && search.length >= 2 ? (
+                        <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
+                          {results.length === 0
+                            ? 'No repositories found'
+                            : 'All available repositories already in this project'}
+                        </div>
+                      ) : (
+                        availableResults.map((repo) => (
+                          <div
+                            key={repo.id}
+                            onClick={() => setSelectedRepo(repo)}
+                            style={{
+                              padding: 14,
+                              marginBottom: 10,
+                              cursor: 'pointer',
+                              border: '2px solid #1a1a1a',
+                              background: '#ffffff',
+                              boxShadow: '2px 2px 0 #1a1a1a',
+                              transition: 'all 0.1s ease',
+                            }}
+                            onMouseOver={(e) => {
+                              e.currentTarget.style.background = '#1a1a1a';
+                              e.currentTarget.style.color = '#ffffff';
+                            }}
+                            onMouseOut={(e) => {
+                              e.currentTarget.style.background = '#ffffff';
+                              e.currentTarget.style.color = '#1a1a1a';
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontWeight: 800 }}>{repo.full_name}</span>
+                              {repo.private && (
+                                <span style={{
+                                  fontSize: 10,
+                                  padding: '3px 8px',
+                                  border: '2px solid #1a1a1a',
+                                  fontWeight: 800,
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.5px',
+                                }}>
+                                  Private
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      );
+                    })()}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div style={{
+                  padding: 12,
+                  border: '2px solid #1a1a1a',
+                  marginBottom: 20,
+                  background: '#f5f5f5',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 800 }}>{selectedRepo.full_name}</span>
+                    <button
+                      onClick={() => setSelectedRepo(null)}
+                      style={{
+                        background: 'none',
+                        border: '2px solid #1a1a1a',
+                        color: '#1a1a1a',
+                        cursor: 'pointer',
+                        fontSize: 11,
+                        fontWeight: 800,
+                        padding: '4px 10px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
+                      }}
+                    >
+                      Change
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{
+                    display: 'block',
+                    color: '#666',
+                    fontSize: 11,
+                    marginBottom: 8,
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                  }}>
+                    Service Name
+                  </label>
+                  <input
+                    type="text"
+                    value={config.service_name}
+                    onChange={(e) => setConfig({ ...config, service_name: e.target.value })}
+                    placeholder="app"
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{
+                    display: 'block',
+                    color: '#666',
+                    fontSize: 11,
+                    marginBottom: 8,
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                  }}>
+                    Root Path
+                  </label>
+                  <input
+                    type="text"
+                    value={config.root_path}
+                    onChange={(e) => setConfig({ ...config, root_path: e.target.value })}
+                    placeholder="/"
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{
+                    display: 'block',
+                    color: '#666',
+                    fontSize: 11,
+                    marginBottom: 8,
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                  }}>
+                    Deploy Mode
+                  </label>
+                  <select
+                    value={config.deploy_mode}
+                    onChange={(e) => setConfig({ ...config, deploy_mode: e.target.value as 'release' | 'commit' })}
+                    style={{ ...inputStyle, cursor: 'pointer' }}
+                  >
+                    <option value="release">Release — deploy on new tags</option>
+                    <option value="commit">Commit — deploy on new commits</option>
+                  </select>
+                </div>
+
+                <div style={{ marginBottom: 24 }}>
+                  <label style={{
+                    display: 'block',
+                    color: '#666',
+                    fontSize: 11,
+                    marginBottom: 8,
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                  }}>
+                    Watch Branch
+                  </label>
+                  <input
+                    type="text"
+                    value={config.watch_branch}
+                    onChange={(e) => setConfig({ ...config, watch_branch: e.target.value })}
+                    placeholder="main"
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <button
+                    onClick={onClose}
+                    style={{
+                      flex: 1,
+                      padding: '14px',
+                      border: '3px solid #1a1a1a',
+                      background: '#ffffff',
+                      color: '#1a1a1a',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      fontSize: 13,
+                      boxShadow: '3px 3px 0 #1a1a1a',
+                      transition: 'all 0.1s ease',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleAdd}
+                    disabled={adding}
+                    style={{
+                      flex: 1,
+                      padding: '14px',
+                      border: '3px solid #1a1a1a',
+                      background: adding ? '#f5f5f5' : '#1a1a1a',
+                      color: adding ? '#666' : '#ffffff',
+                      fontWeight: 800,
+                      cursor: adding ? 'not-allowed' : 'pointer',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      fontSize: 13,
+                      boxShadow: adding ? '1px 1px 0 #1a1a1a' : '3px 3px 0 #1a1a1a',
+                      transition: 'all 0.1s ease',
+                    }}
+                  >
+                    {adding ? 'Adding...' : 'Add Service'}
+                  </button>
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+}
+
 function RawEditorModal({
   envVars,
   onClose,
@@ -1579,6 +2359,35 @@ function DeployModal({
   const [newKey, setNewKey] = useState('');
   const [newValue, setNewValue] = useState('');
   const [showRawEditor, setShowRawEditor] = useState(false);
+  const [showSecrets, setShowSecrets] = useState(false);
+  const [lastDeploymentEnv, setLastDeploymentEnv] = useState<Record<string, string> | null>(null);
+  const [loadingLastEnv, setLoadingLastEnv] = useState(false);
+
+  // Load last successful deployment's env vars for comparison
+  useEffect(() => {
+    if (showDeployModal) {
+      async function loadLastDeploymentEnv() {
+        setLoadingLastEnv(true);
+        try {
+          const response = await api.get(`/api/repos/${showDeployModal.repoId}/deployments`);
+          if (response.ok) {
+            const data = await response.json();
+            const lastSuccessful = data.deployments?.find(
+              (d: any) => d.status === 'running'
+            );
+            if (lastSuccessful?.env_vars) {
+              setLastDeploymentEnv(lastSuccessful.env_vars);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to load last deployment env:', error);
+        } finally {
+          setLoadingLastEnv(false);
+        }
+      }
+      loadLastDeploymentEnv();
+    }
+  }, [showDeployModal]);
 
   if (!showDeployModal) return null;
 
@@ -1688,6 +2497,41 @@ function DeployModal({
           </div>
         )}
 
+        {/* Quick Actions */}
+        {lastDeploymentEnv && (
+          <div style={{
+            padding: 12,
+            border: '2px solid #1a1a1a',
+            background: '#f5f5f5',
+            marginBottom: 20,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#1a1a1a' }}>
+                Quick Actions
+              </span>
+              <button
+                onClick={() => setEnvVars({ ...lastDeploymentEnv })}
+                style={{
+                  padding: '6px 12px',
+                  border: '2px solid #1a1a1a',
+                  background: '#1a1a1a',
+                  color: '#ffffff',
+                  fontSize: 11,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                }}
+              >
+                Use same env as last deployment
+              </button>
+            </div>
+            <p style={{ color: '#666', fontSize: 11, fontWeight: 600, margin: 0 }}>
+              Last deployment had {Object.keys(lastDeploymentEnv).length} environment variables
+            </p>
+          </div>
+        )}
+
         {loadingEnv ? (
           <div style={{ textAlign: 'center', padding: 40, color: '#666', fontWeight: 600 }}>
             Loading environment variables...
@@ -1697,57 +2541,128 @@ function DeployModal({
             <div style={{ marginBottom: 24 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <label style={labelStyle}>Environment Variables</label>
-                <button
-                  onClick={() => setShowRawEditor(true)}
-                  style={{
-                    padding: '6px 12px',
-                    border: '2px solid #1a1a1a',
-                    background: '#ffffff',
-                    color: '#1a1a1a',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    fontSize: 11,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                  }}
-                >
-                  Raw Editor
-                </button>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <button
+                    onClick={() => setShowSecrets(!showSecrets)}
+                    style={{
+                      padding: '6px 12px',
+                      border: '2px solid #1a1a1a',
+                      background: '#ffffff',
+                      color: '#1a1a1a',
+                      fontSize: 11,
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                    }}
+                  >
+                    {showSecrets ? '👁 Hide Values' : '🔒 Show Values'}
+                  </button>
+                  <button
+                    onClick={() => setShowRawEditor(true)}
+                    style={{
+                      padding: '6px 12px',
+                      border: '2px solid #1a1a1a',
+                      background: '#ffffff',
+                      color: '#1a1a1a',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      fontSize: 11,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                    }}
+                  >
+                    Raw Editor
+                  </button>
+                </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
-                {Object.entries(envVars).map(([key, value]) => (
-                  <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <input
-                      value={key}
-                      readOnly
-                      style={{ ...inputStyle, background: '#f5f5f5' }}
-                    />
-                    <input
-                      value={value}
-                      onChange={(e) => setEnvVars({ ...envVars, [key]: e.target.value })}
-                      style={valueStyle}
-                    />
-                    <button
-                      onClick={() => {
-                        const copy = { ...envVars };
-                        delete copy[key];
-                        setEnvVars(copy);
-                      }}
-                      style={{
-                        padding: '10px 12px',
-                        border: '2px solid #1a1a1a',
-                        background: '#ffffff',
-                        color: '#1a1a1a',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        fontSize: 14,
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
+                {Object.entries(envVars).map(([key, value]) => {
+                  const lastValue = lastDeploymentEnv?.[key];
+                  const isChanged = lastValue !== undefined && lastValue !== value;
+                  const isSecret = key.toLowerCase().includes('secret') ||
+                    key.toLowerCase().includes('password') ||
+                    key.toLowerCase().includes('token') ||
+                    key.toLowerCase().includes('key') ||
+                    key.toLowerCase().includes('api');
+
+                  return (
+                    <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <input
+                        value={key}
+                        readOnly
+                        style={{ ...inputStyle, background: '#f5f5f5' }}
+                      />
+                      <div style={{ flex: 2, position: 'relative' }}>
+                        {isChanged && (
+                          <div style={{
+                            position: 'absolute',
+                            top: -6,
+                            right: -6,
+                            padding: '2px 6px',
+                            background: '#e67e22',
+                            color: '#ffffff',
+                            fontSize: 10,
+                            fontWeight: 800,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px',
+                            borderRadius: 3,
+                            zIndex: 1,
+                          }}>
+                            Changed
+                          </div>
+                        )}
+                        <input
+                          value={isSecret && !showSecrets ? '•••••••••' : value}
+                          onChange={(e) => setEnvVars({ ...envVars, [key]: e.target.value })}
+                          type={isSecret && !showSecrets ? 'password' : 'text'}
+                          style={{
+                            ...valueStyle,
+                            color: isSecret && !showSecrets ? '#999' : '#1a1a1a',
+                          }}
+                        />
+                      </div>
+                      <button
+                        onClick={() => {
+                          const copy = { ...envVars };
+                          delete copy[key];
+                          setEnvVars(copy);
+                        }}
+                        style={{
+                          padding: '10px 12px',
+                          border: '2px solid #1a1a1a',
+                          background: '#ffffff',
+                          color: '#1a1a1a',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          fontSize: 14,
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
+              {lastDeploymentEnv && Object.keys(envVars).length > 0 && (
+                <div style={{
+                  padding: 10,
+                  border: '2px solid #e67e22',
+                  background: '#fef5e8',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: '#e67e22',
+                }}>
+                  {(() => {
+                    const changes = Object.entries(envVars).filter(
+                      ([key, value]) => lastDeploymentEnv![key] !== value
+                    );
+                    return changes.length > 0
+                      ? `${changes.length} variable${changes.length === 1 ? '' : 's'} changed from last deployment`
+                      : 'No changes from last deployment';
+                  })()}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 8 }}>
                 <input
                   value={newKey}

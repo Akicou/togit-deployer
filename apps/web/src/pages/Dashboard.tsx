@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { api } from '../lib/api';
 import { useRecentDeployments } from '../hooks/useDeployments';
 import DeployBadge from '../components/DeployBadge';
-import type { User, Stats, SystemStatus } from '../types';
+import type { User, Stats, SystemStatus, Project } from '../types';
 
 interface DashboardProps {
   user: User;
@@ -14,16 +14,64 @@ export default function Dashboard({ user }: DashboardProps) {
   const { deployments, loading: deploymentsLoading } = useRecentDeployments();
   const [stats, setStats] = useState<Stats | null>(null);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
+  const [projectHealth, setProjectHealth] = useState<Project[]>([]);
+  const [pendingRequests, setPendingRequests] = useState(0);
+  const [repos, setRepos] = useState<any[]>([]);
 
   useEffect(() => {
     loadStats();
     loadSystemStatus();
+    loadProjectHealth();
+    loadPendingRequests();
+    loadRepos();
     const interval = setInterval(() => {
       loadStats();
       loadSystemStatus();
     }, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  async function loadRepos() {
+    try {
+      const response = await api.get('/api/repos');
+      if (response.ok) {
+        const data = await response.json();
+        setRepos(data.repos || []);
+      }
+    } catch (error) {
+      console.error('Failed to load repos:', error);
+    }
+  }
+
+  async function loadProjectHealth() {
+    if (user.role !== 'admin' && user.role !== 'deployer') return;
+    try {
+      const response = await api.get('/api/projects');
+      if (response.ok) {
+        const data = await response.json();
+        setProjectHealth(data.projects || []);
+      }
+    } catch (error) {
+      console.error('Failed to load project health:', error);
+    }
+  }
+
+  async function loadPendingRequests() {
+    if (user.role !== 'admin') return;
+    try {
+      const response = await api.get('/api/access-requests');
+      if (response.ok) {
+        const data = await response.json();
+        setPendingRequests(
+          (data.access_requests || []).filter(
+            (r: any) => r.status === 'pending'
+          ).length
+        );
+      }
+    } catch (error) {
+      console.error('Failed to load pending requests:', error);
+    }
+  }
 
   async function loadStats() {
     try {
@@ -114,6 +162,247 @@ export default function Dashboard({ user }: DashboardProps) {
           </motion.div>
         ))}
       </div>
+
+      {/* Quick Actions */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }}
+        style={{
+          background: '#ffffff',
+          border: '3px solid #1a1a1a',
+          padding: 28,
+          marginBottom: 24,
+          boxShadow: '4px 4px 0 #1a1a1a',
+        }}
+      >
+        <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginBottom: 20, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          Quick Actions
+        </h2>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+          gap: 16,
+        }}>
+          {(user.role === 'admin' || user.role === 'deployer') && (
+            <Link
+              to="/repositories"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                padding: 20,
+                border: '2px solid #1a1a1a',
+                background: '#f5f5f5',
+                textDecoration: 'none',
+                boxShadow: '2px 2px 0 #1a1a1a',
+                transition: 'all 0.1s ease',
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = '#1a1a1a';
+                e.currentTarget.style.boxShadow = '1px 1px 0 #1a1a1a';
+                e.currentTarget.style.transform = 'translate(1px, 1px)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = '#f5f5f5';
+                e.currentTarget.style.boxShadow = '2px 2px 0 #1a1a1a';
+                e.currentTarget.style.transform = 'translate(0, 0)';
+              }}
+            >
+              <span style={{ fontSize: 24, fontWeight: 800, color: '#1a1a1a' }}>🚀</span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: '#1a1a1a' }}>
+                Deploy Service
+              </span>
+            </Link>
+          )}
+
+          <Link
+            to="/repositories"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              padding: 20,
+              border: '2px solid #1a1a1a',
+              background: '#f5f5f5',
+              textDecoration: 'none',
+              boxShadow: '2px 2px 0 #1a1a1a',
+              transition: 'all 0.1s ease',
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.background = '#1a1a1a';
+              e.currentTarget.style.boxShadow = '1px 1px 0 #1a1a1a';
+              e.currentTarget.style.transform = 'translate(1px, 1px)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.background = '#f5f5f5';
+              e.currentTarget.style.boxShadow = '2px 2px 0 #1a1a1a';
+              e.currentTarget.style.transform = 'translate(0, 0)';
+            }}
+          >
+            <span style={{ fontSize: 24, fontWeight: 800, color: '#1a1a1a' }}>📊</span>
+            <span style={{ fontSize: 14, fontWeight: 800, color: '#1a1a1a' }}>
+              View All Services
+            </span>
+          </Link>
+
+          {(user.role === 'admin' || user.role === 'deployer') && stats?.failed_today > 0 && (
+            <Link
+              to="/logs"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                padding: 20,
+                border: '2px solid #e67e22',
+                background: '#fef5e8',
+                textDecoration: 'none',
+                boxShadow: '2px 2px 0 #e67e22',
+                transition: 'all 0.1s ease',
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = '#e67e22';
+                e.currentTarget.style.color = '#ffffff';
+                e.currentTarget.style.boxShadow = '1px 1px 0 #e67e22';
+                e.currentTarget.style.transform = 'translate(1px, 1px)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = '#fef5e8';
+                e.currentTarget.style.color = '#1a1a1a';
+                e.currentTarget.style.boxShadow = '2px 2px 0 #e67e22';
+                e.currentTarget.style.transform = 'translate(0, 0)';
+              }}
+            >
+              <span style={{ fontSize: 24, fontWeight: 800, color: '#e67e22' }}>⚠️</span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: '#1a1a1a' }}>
+                {stats.failed_today} Failed Today
+              </span>
+            </Link>
+          )}
+
+          {user.role === 'admin' && pendingRequests > 0 && (
+            <Link
+              to="/settings"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                padding: 20,
+                border: '2px solid #1a1a1a',
+                background: '#f5f5f5',
+                textDecoration: 'none',
+                boxShadow: '2px 2px 0 #1a1a1a',
+                transition: 'all 0.1s ease',
+                position: 'relative',
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = '#1a1a1a';
+                e.currentTarget.style.boxShadow = '1px 1px 0 #1a1a1a';
+                e.currentTarget.style.transform = 'translate(1px, 1px)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = '#f5f5f5';
+                e.currentTarget.style.boxShadow = '2px 2px 0 #1a1a1a';
+                e.currentTarget.style.transform = 'translate(0, 0)';
+              }}
+            >
+              <span style={{
+                position: 'absolute',
+                top: 10,
+                right: 10,
+                padding: '4px 10px',
+                background: '#e67e22',
+                color: '#ffffff',
+                fontSize: 11,
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                borderRadius: 3,
+              }}>
+                {pendingRequests}
+              </span>
+              <span style={{ fontSize: 24, fontWeight: 800, color: '#1a1a1a' }}>👥</span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: '#1a1a1a' }}>
+                Manage Access
+              </span>
+            </Link>
+          )}
+        </div>
+      </motion.div>
+
+      {/* Project Health Overview */}
+      {projectHealth.length > 0 && (user.role === 'admin' || user.role === 'deployer') && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          style={{
+            background: '#ffffff',
+            border: '3px solid #1a1a1a',
+            padding: 28,
+            marginBottom: 24,
+            boxShadow: '4px 4px 0 #1a1a1a',
+          }}
+        >
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginBottom: 20, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Project Health
+          </h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+            {projectHealth.map((project) => {
+              const projectRepos = repos.filter((r: any) => r.project_id === project.id);
+              const hasFailed = projectRepos.some((r: any) => r.last_deployment_status === 'failed');
+              const hasPending = projectRepos.some((r: any) => r.last_deployment_status === 'pending' || r.last_deployment_status === 'building');
+
+              return (
+                <Link
+                  key={project.id}
+                  to={`/projects/${project.id}`}
+                  style={{
+                    padding: 16,
+                    border: '2px solid #1a1a1a',
+                    background: hasFailed ? '#fef5e8' : '#ffffff',
+                    textDecoration: 'none',
+                    boxShadow: '2px 2px 0 #1a1a1a',
+                    transition: 'all 0.1s ease',
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.background = '#f5f5f5';
+                    e.currentTarget.style.transform = 'translate(1px, 1px)';
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.background = hasFailed ? '#fef5e8' : '#ffffff';
+                    e.currentTarget.style.transform = 'translate(0, 0)';
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ fontWeight: 800, fontSize: 15, color: '#1a1a1a' }}>
+                      {project.name}
+                    </span>
+                    {hasPending && (
+                      <span style={{
+                        padding: '4px 8px',
+                        background: '#f5f5f5',
+                        border: '2px solid #1a1a1a',
+                        fontSize: 10,
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
+                      }}>
+                        Deploying
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, fontSize: 12, fontWeight: 600, color: '#666' }}>
+                    <span>{project.service_count || 0} services</span>
+                    {hasFailed && (
+                      <span style={{ color: '#e67e22', fontWeight: 700 }}>⚠️ Has failures</span>
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </motion.div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24 }}>
         {/* Recent Deployments */}
