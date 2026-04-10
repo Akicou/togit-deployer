@@ -154,7 +154,13 @@ export async function upsertUser(githubUser: GitHubUser, accessToken: string): P
 export function decryptAccessToken(encryptedToken: string): string {
   try {
     return decrypt(encryptedToken);
-  } catch {
+  } catch (error) {
+    console.warn(
+      'Failed to decrypt GitHub access token. ' +
+      'This usually means SESSION_SECRET changed since the token was stored. ' +
+      'The user needs to re-authenticate.',
+      error instanceof Error ? error.message : error
+    );
     return '';
   }
 }

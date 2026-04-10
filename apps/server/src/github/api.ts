@@ -33,6 +33,16 @@ interface GitHubRepo {
   };
 }
 
+export class GitHubAuthError extends Error {
+  constructor(owner: string, repo: string) {
+    super(
+      `GitHub token for ${owner}/${repo} is invalid or expired. ` +
+      `The repo owner needs to re-authenticate via the togit-deployer UI.`
+    );
+    this.name = 'GitHubAuthError';
+  }
+}
+
 /**
  * Check if a GitHub API response contains rate limit headers
  * and log a warning if we're close to running out.
@@ -73,6 +83,10 @@ export async function getLatestRelease(
       accessToken
     );
 
+    if (response.status === 401) {
+      throw new GitHubAuthError(owner, repo);
+    }
+
     if (response.status === 404) {
       return null;
     }
@@ -109,6 +123,10 @@ export async function getLatestCommit(
       accessToken
     );
 
+    if (response.status === 401) {
+      throw new GitHubAuthError(owner, repo);
+    }
+
     if (!response.ok) {
       throw new Error(`GitHub API error: ${response.status}`);
     }
@@ -134,6 +152,10 @@ export async function getUserRepos(accessToken: string): Promise<GitHubRepo[]> {
       `https://api.github.com/user/repos?per_page=${perPage}&page=${page}&sort=updated`,
       accessToken
     );
+
+    if (response.status === 401) {
+      throw new GitHubAuthError('user', 'repos');
+    }
 
     if (!response.ok) {
       throw new Error(`GitHub API error: ${response.status}`);
@@ -169,6 +191,10 @@ export async function getRepo(
       `https://api.github.com/repos/${owner}/${repo}`,
       accessToken
     );
+
+    if (response.status === 401) {
+      throw new GitHubAuthError(owner, repo);
+    }
 
     if (response.status === 404) {
       return null;

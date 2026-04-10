@@ -1,8 +1,8 @@
 import { query } from '../db/client.js';
-import { getLatestRelease, getLatestCommit, getLastDeployedRef } from '../github/api.js';
+import { getLatestRelease, getLatestCommit, getLastDeployedRef, GitHubAuthError } from '../github/api.js';
 import { decryptAccessToken } from '../github/oauth.js';
 import { deploy, acquireDeployLock, releaseDeployLock } from './deployer.js';
-import { logSystem, logError } from '../logger/index.js';
+import { logSystem, logError, logWarn } from '../logger/index.js';
 import type { Repository, User } from '../types.js';
 
 let schedulerInterval: Timer | null = null;
@@ -159,8 +159,12 @@ export async function runSchedulerTick(): Promise<void> {
           }
         }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        logError(`Error checking repo ${repo.full_name}: ${errorMessage}`, { repo_id: repo.id });
+        if (error instanceof GitHubAuthError) {
+          logWarn(`Auth failed for ${repo.full_name}: ${error.message}`, { repo_id: repo.id });
+        } else {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          logError(`Error checking repo ${repo.full_name}: ${errorMessage}`, { repo_id: repo.id });
+        }
       }
     }
 

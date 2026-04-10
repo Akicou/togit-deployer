@@ -118,6 +118,10 @@ export function logSystem(message: string, options?: Partial<Pick<Log, 'deployme
   return log('system', 'info', message, options);
 }
 
+export function logWarn(message: string, options?: Partial<Pick<Log, 'deployment_id' | 'repo_id'>> & { meta?: Record<string, unknown> }) {
+  return log('system', 'warn', message, { ...options, meta: options?.meta });
+}
+
 export function logError(message: string, options?: Partial<Pick<Log, 'deployment_id' | 'repo_id'>> & { meta?: Record<string, unknown> }) {
   return log('system', 'error', message, { ...options, meta: options?.meta });
 }
