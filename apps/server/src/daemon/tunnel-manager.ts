@@ -17,7 +17,12 @@ export async function createServiceTunnel(repo: Repository, user: User): Promise
     return existing.rows[0];
   }
 
-  const created = await createTunnel(null, repo.tunnel_port, authToken, { type: 'random' });
+  const tunnelOpts = {
+    type: (repo.tunnel_type ?? 'random') as import('./localtonet.js').TunnelType,
+    ...(repo.tunnel_subdomain ? { subDomain: repo.tunnel_subdomain } : {}),
+    ...(repo.tunnel_domain ? { domain: repo.tunnel_domain } : {}),
+  };
+  const created = await createTunnel(null, repo.tunnel_port, authToken, tunnelOpts);
   await startTunnel(created.tunnelId, authToken);
 
   const result = await query<ServiceTunnel>(

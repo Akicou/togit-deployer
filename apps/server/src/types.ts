@@ -67,6 +67,12 @@ export interface Repository {
   tunnel_port: number | null;
   /** Whether tunnel is currently enabled for this service */
   tunnel_enabled: boolean;
+  /** Tunnel URL mode: random subdomain, custom subdomain, or custom domain */
+  tunnel_type: 'random' | 'subdomain' | 'custom-domain';
+  /** Custom subdomain for subdomain mode (e.g. "myapp" → myapp.localto.net) */
+  tunnel_subdomain: string | null;
+  /** Base domain for subdomain mode, or full domain for custom-domain mode */
+  tunnel_domain: string | null;
   created_at: Date;
 }
 
