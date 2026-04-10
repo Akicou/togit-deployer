@@ -1,5 +1,5 @@
 import { query } from '../db/client.js';
-import { getLatestRelease, getLatestCommit, getLastDeployedRef, GitHubAuthError } from '../github/api.js';
+import { getLatestRelease, getLatestCommit, getLastDeployedRef, GitHubAuthError, clearRepoCache } from '../github/api.js';
 import { decryptAccessToken } from '../github/oauth.js';
 import { deploy, acquireDeployLock, releaseDeployLock } from './deployer.js';
 import { logSystem, logError, logWarn } from '../logger/index.js';
@@ -153,6 +153,7 @@ export async function runSchedulerTick(): Promise<void> {
             const repoEnvVars = typeof repo.deployment_env_vars === 'string'
               ? JSON.parse(repo.deployment_env_vars)
               : (repo.deployment_env_vars || {});
+            clearRepoCache(repo.owner, repo.name);
             await deploy(repo, ref, refType, null, repoEnvVars);
           } finally {
             releaseDeployLock(repo.id);

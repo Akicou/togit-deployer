@@ -307,21 +307,28 @@ export async function triggerDeploy(req: Request, user: User, repoId: number): P
 
   const repo = repoResult.rows[0];
 
-  // Acquire per-repo deploy lock to prevent concurrent deploys
-  const hasLock = await acquireDeployLock(repoId);
-  if (!hasLock) {
-    return Response.json({ error: 'A deployment is already in progress for this repository' }, { status: 409 });
-  }
-
-  // Extract environment variables for this deployment from request body
+  // Extract environment variables and force flag from request body
   let env_vars: Record<string, string> = {};
+  let force = false;
   try {
     const body = await req.json();
-    if (typeof body === 'object' && body !== null && 'env_vars' in body) {
-      env_vars = (body.env_vars as Record<string, string>) || {};
+    if (typeof body === 'object' && body !== null) {
+      if ('env_vars' in body) env_vars = (body.env_vars as Record<string, string>) || {};
+      if ('force' in body) force = body.force === true;
     }
   } catch {
     // ignore invalid json
+  }
+
+  // Acquire per-repo deploy lock to prevent concurrent deploys
+  // With force=true, the existing lock is released and a new deployment starts
+  const hasLock = await acquireDeployLock(repoId);
+  if (!hasLock) {
+    if (!force) {
+      return Response.json({ error: 'A deployment is already in progress for this repository' }, { status: 409 });
+    }
+    releaseDeployLock(repoId);
+    await acquireDeployLock(repoId);
   }
 
   // Get the latest ref based on deploy mode

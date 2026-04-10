@@ -43,6 +43,18 @@ export class GitHubAuthError extends Error {
   }
 }
 
+// In-memory cache for release/commit lookups to avoid repeated API calls per scheduler tick.
+// Key format: "owner/repo" (e.g. "user1/my-amazing-app")
+const releaseCache = new Map<string, { value: GitHubRelease | null; ts: number }>();
+const commitCache = new Map<string, { value: GitHubCommit | null; ts: number }>();
+const CACHE_TTL_MS = 30_000; // 30 seconds
+
+export function clearRepoCache(owner: string, repo: string): void {
+  const key = `${owner}/${repo}`;
+  releaseCache.delete(key);
+  commitCache.delete(key);
+}
+
 /**
  * Check if a GitHub API response contains rate limit headers
  * and log a warning if we're close to running out.
@@ -77,6 +89,12 @@ export async function getLatestRelease(
   accessToken?: string,
   branch?: string
 ): Promise<GitHubRelease | null> {
+  const cacheKey = `${owner}/${repo}${branch ? `#${branch}` : ''}`;
+  const cached = releaseCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+    return cached.value;
+  }
+
   try {
     const response = await githubFetch(
       `https://api.github.com/repos/${owner}/${repo}/releases?per_page=20`,
@@ -88,6 +106,7 @@ export async function getLatestRelease(
     }
 
     if (response.status === 404) {
+      releaseCache.set(cacheKey, { value: null, ts: Date.now() });
       return null;
     }
 
@@ -96,13 +115,12 @@ export async function getLatestRelease(
     }
 
     const releases = (await response.json()) as GitHubRelease[];
-    if (releases.length === 0) return null;
-
-    if (branch) {
-      return releases.find((r) => r.target_commitish === branch) ?? null;
+    let result: GitHubRelease | null = null;
+    if (releases.length > 0) {
+      result = branch ? (releases.find((r) => r.target_commitish === branch) ?? null) : releases[0];
     }
-
-    return releases[0];
+    releaseCache.set(cacheKey, { value: result, ts: Date.now() });
+    return result;
   } catch (error) {
     console.error('Failed to fetch latest release:', error);
     throw error;
@@ -115,6 +133,12 @@ export async function getLatestCommit(
   accessToken?: string,
   branch?: string
 ): Promise<GitHubCommit | null> {
+  const cacheKey = `${owner}/${repo}${branch ? `@${branch}` : ''}`;
+  const cached = commitCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+    return cached.value;
+  }
+
   const branchParam = branch ? `&sha=${encodeURIComponent(branch)}` : '';
 
   try {
@@ -132,7 +156,9 @@ export async function getLatestCommit(
     }
 
     const commits = (await response.json()) as GitHubCommit[];
-    return commits[0] || null;
+    const result = commits[0] || null;
+    commitCache.set(cacheKey, { value: result, ts: Date.now() });
+    return result;
   } catch (error) {
     console.error('Failed to fetch latest commit:', error);
     throw error;

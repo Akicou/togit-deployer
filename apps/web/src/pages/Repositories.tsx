@@ -253,6 +253,7 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
   const toast = useToast();
   const [showDeployModal, setShowDeployModal] = useState<{ repoId: number; repoName: string } | null>(null);
   const [deployEnvVars, setDeployEnvVars] = useState<Record<string, string>>({});
+  const [deployForce, setDeployForce] = useState(false);
   const [envExample, setEnvExample] = useState<Record<string, string> | null>(null);
   const [loadingEnv, setLoadingEnv] = useState(false);
   const [config, setConfig] = useState({
@@ -281,10 +282,12 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
     try {
       const response = await api.post(`/api/repos/${showDeployModal.repoId}/deploy`, {
         env_vars: deployEnvVars,
+        force: deployForce,
       });
       if (response.ok) {
         toast('Deployment started', 'success');
         setShowDeployModal(null);
+        setDeployForce(false);
         onRefresh();
       } else {
         const data = await response.json().catch(() => ({}));
@@ -484,7 +487,8 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
                 <button
                   onClick={async () => {
                     if (!isDeploying) {
-                      setDeployEnvVars({});
+                      const savedVars = repo.deployment_env_vars || {};
+                      setDeployEnvVars({ ...savedVars });
                       setEnvExample(null);
                       setLoadingEnv(true);
                       setShowDeployModal({ repoId: repo.id, repoName: repo.full_name });
@@ -494,7 +498,18 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
                           const data = await response.json();
                           if (data.env_example) {
                             setEnvExample(data.env_example);
-                            setDeployEnvVars(data.env_example);
+                            // Merge: saved vars take priority; add missing keys from .env.example with empty values
+                            setDeployEnvVars((prev) => {
+                              const merged: Record<string, string> = {};
+                              for (const key of Object.keys(data.env_example)) {
+                                merged[key] = key in prev ? prev[key] : '';
+                              }
+                              // Keep any saved vars not in .env.example
+                              for (const [key, value] of Object.entries(prev)) {
+                                if (!(key in merged)) merged[key] = value;
+                              }
+                              return merged;
+                            });
                           }
                         }
                       } catch (error) {
@@ -919,13 +934,15 @@ function RepoDetail({ repo, user, onRefresh }: { repo: Repository; user: User; o
       {showDeployModal && (
         <DeployModal
           showDeployModal={showDeployModal}
-          onClose={() => setShowDeployModal(null)}
+          onClose={() => { setShowDeployModal(null); setDeployForce(false); }}
           onDeploy={handleDeployConfirm}
           envVars={deployEnvVars}
           setEnvVars={setDeployEnvVars}
           envExample={envExample}
           loadingEnv={loadingEnv}
           deploying={deploying}
+          force={deployForce}
+          setForce={setDeployForce}
         />
       )}
       <AnimatePresence>
@@ -1564,6 +1581,8 @@ function DeployModal({
   envExample,
   loadingEnv,
   deploying,
+  force,
+  setForce,
 }: {
   showDeployModal: { repoId: number; repoName: string } | null;
   onClose: () => void;
@@ -1573,6 +1592,8 @@ function DeployModal({
   envExample: Record<string, string> | null;
   loadingEnv: boolean;
   deploying?: boolean;
+  force?: boolean;
+  setForce?: (v: boolean) => void;
 }) {
   const [newKey, setNewKey] = useState('');
   const [newValue, setNewValue] = useState('');
@@ -1783,6 +1804,20 @@ function DeployModal({
               </div>
             </div>
 
+            {setForce && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={force ?? false}
+                  onChange={(e) => setForce(e.target.checked)}
+                  style={{ width: 16, height: 16, cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: 11, fontWeight: 700, color: force ? '#c0392b' : '#666', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Force deploy (bypass active deployment lock)
+                </span>
+              </label>
+            )}
+
             <div style={{ display: 'flex', gap: 12 }}>
               <button
                 onClick={onClose}
@@ -1808,19 +1843,19 @@ function DeployModal({
                 style={{
                   flex: 1,
                   padding: '14px',
-                  border: '3px solid #1a1a1a',
-                  background: deploying ? '#f5f5f5' : '#1a1a1a',
+                  border: `3px solid ${force ? '#c0392b' : '#1a1a1a'}`,
+                  background: deploying ? '#f5f5f5' : force ? '#c0392b' : '#1a1a1a',
                   color: deploying ? '#666' : '#ffffff',
                   fontWeight: 800,
                   cursor: deploying ? 'not-allowed' : 'pointer',
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px',
                   fontSize: 13,
-                  boxShadow: deploying ? '1px 1px 0 #1a1a1a' : '3px 3px 0 #1a1a1a',
+                  boxShadow: deploying ? '1px 1px 0 #1a1a1a' : `3px 3px 0 ${force ? '#c0392b' : '#1a1a1a'}`,
                   transition: 'all 0.1s ease',
                 }}
               >
-                {deploying ? 'Deploying...' : 'Deploy'}
+                {deploying ? 'Deploying...' : force ? 'Force Deploy' : 'Deploy'}
               </button>
             </div>
           </>
