@@ -1,6 +1,6 @@
 import { query } from '../db/client.js';
 import { deploy, acquireDeployLock, releaseDeployLock } from '../daemon/deployer.js';
-import { getUserRepos } from '../github/api.js';
+import { getUserRepos, searchPublicRepos } from '../github/api.js';
 import { decryptAccessToken } from '../github/oauth.js';
 import { z } from 'zod';
 import type { Repository, User } from '../types.js';
@@ -448,24 +448,26 @@ export async function searchGitHubRepos(req: Request, user: User): Promise<Respo
       [user.id]
     );
 
-    if (!tokenResult.rows[0]?.github_access_token) {
-      return Response.json({ error: 'No GitHub token found' }, { status: 401 });
+    // Get access token if available (optional for public search)
+    const accessToken = tokenResult.rows[0]?.github_access_token
+      ? decryptAccessToken(tokenResult.rows[0].github_access_token)
+      : undefined;
+
+    let repos: Array<{ id: number; name: string; full_name: string; private: boolean; owner: { login: string } }>;
+
+    if (query_) {
+      // Use GitHub's search API to find public (and accessible) repositories
+      repos = await searchPublicRepos(query_, accessToken);
+    } else {
+      // No query: return the user's own repos
+      if (!accessToken) {
+        return Response.json({ repos: [] });
+      }
+      repos = await getUserRepos(accessToken);
     }
 
-    const accessToken = decryptAccessToken(tokenResult.rows[0].github_access_token);
-    // Fetch all user repos with pagination handling
-    const repos = await getUserRepos(accessToken);
-
-    // Filter by query if provided
-    const filtered = query_
-      ? repos.filter((r) =>
-          r.name.toLowerCase().includes(query_.toLowerCase()) ||
-          r.full_name.toLowerCase().includes(query_.toLowerCase())
-        )
-      : repos;
-
     return Response.json({
-      repos: filtered.map((r) => ({
+      repos: repos.map((r) => ({
         id: r.id,
         name: r.name,
         full_name: r.full_name,
