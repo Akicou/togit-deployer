@@ -15,6 +15,7 @@ import type { User } from './types';
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
 import { Loader2, Menu } from 'lucide-react';
+import { cn } from './lib/utils';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -89,7 +90,10 @@ export default function App() {
           />
           
           {/* Main content */}
-          <main className="flex-1 min-h-screen">
+          <main className={cn(
+            'flex-1 min-h-screen',
+            'lg:ml-64'
+          )}>
             {/* Mobile header */}
             <header className="lg:hidden sticky top-0 z-30 bg-card border-b border-border px-4 py-3 flex items-center justify-between">
               <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)}>
